@@ -73,7 +73,8 @@ describe("RecommendationCard", () => {
 
   it("renders the recommendation label", () => {
     render(<RecommendationCard signal={makeSignal({ recommendation: "STRONG_BUY" })} />);
-    expect(screen.getByText("STRONG BUY")).toBeInTheDocument();
+    const elements = screen.getAllByText("STRONG BUY");
+    expect(elements.length).toBeGreaterThanOrEqual(1);
   });
 
   it("renders confidence bar", () => {
@@ -96,7 +97,8 @@ describe("RecommendationCard", () => {
         signal={makeSignal({ recommendation: "STRONG_SELL", signal_strength: -0.9 })}
       />,
     );
-    expect(screen.getByText("STRONG SELL")).toBeInTheDocument();
+    const elements = screen.getAllByText("STRONG SELL");
+    expect(elements.length).toBeGreaterThanOrEqual(1);
   });
 
   it("renders HOLD signal", () => {
@@ -105,7 +107,8 @@ describe("RecommendationCard", () => {
         signal={makeSignal({ recommendation: "HOLD", signal_strength: 0 })}
       />,
     );
-    expect(screen.getByText("HOLD")).toBeInTheDocument();
+    const elements = screen.getAllByText("HOLD");
+    expect(elements.length).toBeGreaterThanOrEqual(1);
   });
 
   it("shows position size", () => {
