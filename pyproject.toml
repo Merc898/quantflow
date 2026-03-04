@@ -48,7 +48,6 @@ dependencies = [
     "cvxpy>=1.4.0",
     "pyportfolioopt>=1.5.0",
     "riskfolio-lib>=6.0.0",
-    "QuantLib-Python>=1.33.0",
 
     # Time Series
     "sktime>=0.24.0",
@@ -90,6 +89,9 @@ dependencies = [
     "alembic>=1.12.0",
     "pydantic>=2.5.0",
     "pydantic-settings>=2.1.0",
+    "email-validator>=2.1.0",
+    "python-jose[cryptography]>=3.3.0",
+    "bcrypt>=4.0.0",
 
     # Monitoring
     "prometheus-client>=0.19.0",

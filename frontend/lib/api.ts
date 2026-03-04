@@ -25,7 +25,6 @@ import type {
   MacroReport,
   SubscriptionStatus,
   CheckoutSession,
-  WatchlistUpdate,
 } from "./types";
 
 // ---------------------------------------------------------------------------

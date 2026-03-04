@@ -112,8 +112,8 @@ services:
 
   frontend:
     build:
-      context: .
-      dockerfile: docker/Dockerfile.frontend
+      context: ./frontend
+      dockerfile: Dockerfile
     container_name: quantflow_frontend
     restart: unless-stopped
     environment:

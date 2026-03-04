@@ -15,7 +15,10 @@
       "Bash(docker compose:*)",
       "Bash(npm run:*)",
       "Bash(ls:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(docker build:*)",
+      "Bash(docker run:*)",
+      "Bash(docker images:*)"
     ]
   }
 }
