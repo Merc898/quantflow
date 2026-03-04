@@ -8,11 +8,11 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter
 from pydantic import BaseModel
 from sqlalchemy import select
 
-from quantflow.api.auth.dependencies import DbDep, require_tier
+from quantflow.api.auth.dependencies import CurrentUser, DbDep, require_tier
 from quantflow.config.constants import TIER_INSTITUTIONAL
 from quantflow.db.models import User
 
@@ -46,10 +46,11 @@ class AdminUserResponse(BaseModel):
     "/users",
     response_model=list[AdminUserResponse],
     summary="List all users (admin)",
+    dependencies=[require_tier(TIER_INSTITUTIONAL)],
 )
 async def list_users(
     db: DbDep,
-    _admin: User = Depends(require_tier(TIER_INSTITUTIONAL)),
+    _user: CurrentUser,
 ) -> list[AdminUserResponse]:
     """Return every user with their tier and creation timestamp.
 
