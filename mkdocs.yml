@@ -1,0 +1,87 @@
+site_name: QuantFlow Documentation
+site_description: Institutional-grade quantitative research and trading signal platform
+site_url: https://docs.quantflow.io
+repo_url: https://github.com/your-org/quantflow
+repo_name: quantflow
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  palette:
+    - scheme: slate
+      primary: blue
+      accent: cyan
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+    - scheme: default
+      primary: blue
+      accent: cyan
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - search.highlight
+    - search.suggest
+    - content.code.copy
+    - content.tabs.link
+  logo: assets/logo.png
+  favicon: assets/favicon.ico
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            show_source: true
+            show_root_heading: true
+            heading_level: 2
+            docstring_style: google
+  - git-revision-date-localized:
+      enable_creation_date: true
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.details
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - Installation: getting-started/installation.md
+      - Quick Start: getting-started/quickstart.md
+      - Configuration: getting-started/configuration.md
+  - Architecture:
+      - Overview: architecture/overview.md
+      - Data Pipeline: architecture/data-pipeline.md
+      - Signal Engine: architecture/signal-engine.md
+      - Agent Intelligence: architecture/agents.md
+  - API Reference:
+      - Authentication: api/auth.md
+      - Signals: api/signals.md
+      - Portfolio: api/portfolio.md
+      - Intelligence: api/intelligence.md
+      - WebSockets: api/websockets.md
+  - Backtesting:
+      - Overview: backtesting/overview.md
+      - Configuration: backtesting/configuration.md
+      - Metrics: backtesting/metrics.md
+  - Deployment:
+      - Docker Compose: deployment/docker-compose.md
+      - Kubernetes: deployment/kubernetes.md
+      - CI/CD: deployment/cicd.md
+      - Monitoring: deployment/monitoring.md
+  - Contributing: contributing.md

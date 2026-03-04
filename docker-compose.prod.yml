@@ -1,0 +1,119 @@
+version: "3.9"
+
+# QuantFlow — production overrides
+# Apply on top of docker-compose.yml:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# Key differences from dev:
+#   - No source-code mounts (images are immutable)
+#   - Uvicorn with multiple workers (no --reload)
+#   - Celery with higher concurrency
+#   - Resource limits enforced
+#   - No debug ports exposed directly (nginx handles all ingress)
+#   - Secrets via Docker secrets / environment injection at runtime
+
+services:
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: runtime
+    command: uvicorn quantflow.api.main:app --host 0.0.0.0 --port 8000 --workers 4 --no-access-log
+    ports: []  # nginx handles all traffic
+    environment:
+      ENVIRONMENT: production
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
+        reservations:
+          cpus: "0.5"
+          memory: 512M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  celery-worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: runtime
+    command: celery -A quantflow.api.celery_app worker --loglevel=warning --concurrency=8 -Q default,agent_tasks
+    environment:
+      ENVIRONMENT: production
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: "4.0"
+          memory: 4G
+        reservations:
+          cpus: "1.0"
+          memory: 1G
+
+  celery-beat:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: runtime
+    command: celery -A quantflow.api.celery_app beat --loglevel=warning
+    environment:
+      ENVIRONMENT: production
+    deploy:
+      replicas: 1  # only one beat instance
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.frontend
+      target: runner
+    ports: []
+    environment:
+      NODE_ENV: production
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+
+  nginx:
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 256M
+
+  # Prometheus data retention in production
+  prometheus:
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=90d"
+      - "--web.enable-lifecycle"
+    ports: []  # internal only
+
+  grafana:
+    ports: []  # exposed via nginx in production
+
+  # No debug tools in production
+  redis-commander:
+    profiles:
+      - never  # disable even with --profile tools
+
+  flower:
+    profiles:
+      - never

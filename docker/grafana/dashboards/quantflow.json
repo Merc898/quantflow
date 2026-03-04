@@ -1,0 +1,161 @@
+{
+  "id": null,
+  "uid": "quantflow-main",
+  "title": "QuantFlow Platform Overview",
+  "tags": ["quantflow", "api", "business"],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "templating": {
+    "list": []
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "API Request Rate",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(rate(http_requests_total[1m])) by (http_status)",
+          "legendFormat": "HTTP {{ http_status }}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "color": { "mode": "palette-classic" }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "API p50 / p95 / p99 Latency",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p50"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p95"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p99"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "s" }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Error Rate (%)",
+      "type": "stat",
+      "gridPos": { "x": 0, "y": 8, "w": 6, "h": 5 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "100 * sum(rate(http_requests_total{http_status=~\"5..\"}[5m])) / sum(rate(http_requests_total[5m]))",
+          "legendFormat": "5xx rate"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "thresholds": {
+            "steps": [
+              { "value": null, "color": "green" },
+              { "value": 1, "color": "yellow" },
+              { "value": 5, "color": "red" }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "Active WebSocket Connections",
+      "type": "stat",
+      "gridPos": { "x": 6, "y": 8, "w": 6, "h": 5 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "quantflow_active_websocket_connections",
+          "legendFormat": "WS connections"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "blue" } }
+      }
+    },
+    {
+      "id": 5,
+      "title": "Signals Generated / min",
+      "type": "stat",
+      "gridPos": { "x": 12, "y": 8, "w": 6, "h": 5 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(rate(quantflow_signals_generated_total[1m])) * 60",
+          "legendFormat": "signals/min"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "green" } }
+      }
+    },
+    {
+      "id": 6,
+      "title": "Requests In Progress",
+      "type": "stat",
+      "gridPos": { "x": 18, "y": 8, "w": 6, "h": 5 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(http_requests_in_progress)",
+          "legendFormat": "in-progress"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short" }
+      }
+    },
+    {
+      "id": 7,
+      "title": "Signals by Recommendation",
+      "type": "piechart",
+      "gridPos": { "x": 0, "y": 13, "w": 8, "h": 8 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(increase(quantflow_signals_generated_total[1h])) by (recommendation)",
+          "legendFormat": "{{ recommendation }}"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Celery Task Throughput",
+      "type": "timeseries",
+      "gridPos": { "x": 8, "y": 13, "w": 16, "h": 8 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(rate(quantflow_celery_tasks_total[1m])) by (status)",
+          "legendFormat": "{{ status }}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "reqps" }
+      }
+    }
+  ]
+}

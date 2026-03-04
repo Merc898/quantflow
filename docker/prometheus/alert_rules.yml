@@ -1,0 +1,158 @@
+# QuantFlow — Prometheus alerting rules
+# Evaluated every 15s (matches global evaluation_interval)
+
+groups:
+
+  # ---------------------------------------------------------------------------
+  # API availability and latency
+  # ---------------------------------------------------------------------------
+  - name: api_availability
+    rules:
+
+      - alert: APIDown
+        expr: up{job="quantflow_api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "QuantFlow API is down"
+          description: "The FastAPI service has been unreachable for more than 1 minute."
+          runbook: "https://wiki.quantflow.io/runbooks/api-down"
+
+      - alert: APIHighErrorRate
+        expr: |
+          (
+            rate(http_requests_total{http_status=~"5.."}[5m])
+            /
+            rate(http_requests_total[5m])
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "High API error rate ({{ $value | humanizePercentage }})"
+          description: "More than 5% of API requests are returning 5xx errors over the last 5 minutes."
+
+      - alert: APIHighLatencyP95
+        expr: |
+          histogram_quantile(0.95,
+            rate(http_request_duration_seconds_bucket[5m])
+          ) > 2.0
+        for: 10m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "API p95 latency exceeds 2 seconds"
+          description: "The 95th percentile API response time is {{ $value }}s, above the 2s SLA."
+
+      - alert: APIHighLatencyP99
+        expr: |
+          histogram_quantile(0.99,
+            rate(http_request_duration_seconds_bucket[5m])
+          ) > 10.0
+        for: 5m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "API p99 latency exceeds 10 seconds"
+          description: "The 99th percentile API response time is {{ $value }}s — critical degradation."
+
+  # ---------------------------------------------------------------------------
+  # Business metrics
+  # ---------------------------------------------------------------------------
+  - name: business_metrics
+    rules:
+
+      - alert: NoSignalsGenerated
+        expr: |
+          rate(quantflow_signals_generated_total[30m]) == 0
+        for: 30m
+        labels:
+          severity: warning
+          team: quant
+        annotations:
+          summary: "No trading signals generated in 30 minutes"
+          description: "The signal generation pipeline may be stalled. Check Celery workers."
+
+      - alert: HighWebSocketConnections
+        expr: quantflow_active_websocket_connections > 1000
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "High WebSocket connection count ({{ $value }})"
+          description: "Over 1,000 concurrent WebSocket connections. Consider scaling API pods."
+
+  # ---------------------------------------------------------------------------
+  # Infrastructure
+  # ---------------------------------------------------------------------------
+  - name: infrastructure
+    rules:
+
+      - alert: RedisDown
+        expr: up{job="redis"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Redis is unreachable"
+          description: "Redis has been down for 2+ minutes. Rate limiting and caching are degraded."
+
+      - alert: HighMemoryUsage
+        expr: |
+          (
+            node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes
+          ) / node_memory_MemTotal_bytes > 0.90
+        for: 10m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Host memory usage above 90%"
+          description: "Memory utilisation is {{ $value | humanizePercentage }}. Risk of OOM kills."
+
+      - alert: HighCPUUsage
+        expr: |
+          100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 85
+        for: 15m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "CPU usage above 85% for 15 minutes"
+          description: "Average CPU across cores is {{ $value }}%."
+
+  # ---------------------------------------------------------------------------
+  # Celery task queue
+  # ---------------------------------------------------------------------------
+  - name: celery_queue
+    rules:
+
+      - alert: CeleryWorkerDown
+        expr: up{job="celery"} == 0
+        for: 5m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Celery worker fleet is unreachable"
+          description: "No Celery workers are reporting metrics. Background jobs are not processing."
+
+      - alert: CeleryTaskFailureRate
+        expr: |
+          rate(quantflow_celery_tasks_total{status="failure"}[10m])
+          /
+          rate(quantflow_celery_tasks_total[10m]) > 0.1
+        for: 10m
+        labels:
+          severity: warning
+          team: quant
+        annotations:
+          summary: "Celery task failure rate above 10%"
+          description: "{{ $value | humanizePercentage }} of Celery tasks are failing."

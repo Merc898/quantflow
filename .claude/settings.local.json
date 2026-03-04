@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip show:*)",
+      "Bash(pip install:*)",
+      "Bash(python:*)",
+      "Bash(python3:*)",
+      "Bash(npm test:*)",
+      "Bash(where node:*)",
+      "Bash(powershell.exe:*)",
+      "Bash(pytest:*)",
+      "Bash(node:*)",
+      "Bash(where docker:*)",
+      "Bash(powershell:*)",
+      "Bash(docker compose:*)",
+      "Bash(npm run:*)",
+      "Bash(ls:*)"
+    ]
+  }
+}

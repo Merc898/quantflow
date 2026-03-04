@@ -1,0 +1,60 @@
+# QuantFlow — Next.js frontend image
+#
+# Multi-stage build:
+#   deps      — installs node_modules
+#   builder   — runs next build
+#   runner    — minimal production image
+
+# ---------------------------------------------------------------------------
+# Stage 1: deps
+# ---------------------------------------------------------------------------
+FROM node:20-alpine AS deps
+
+WORKDIR /app
+
+# Copy package files
+COPY frontend/package.json frontend/package-lock.json* ./
+
+RUN npm ci --only=production
+
+# ---------------------------------------------------------------------------
+# Stage 2: builder
+# ---------------------------------------------------------------------------
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+COPY --from=deps /app/node_modules ./node_modules
+COPY frontend/ .
+
+# Build-time env (no secrets here — runtime vars injected via k8s/docker)
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV NODE_ENV=production
+
+RUN npm run build
+
+# ---------------------------------------------------------------------------
+# Stage 3: runner
+# ---------------------------------------------------------------------------
+FROM node:20-alpine AS runner
+
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+
+RUN addgroup -S quantflow && adduser -S quantflow -G quantflow
+
+# Copy built assets
+COPY --from=builder /app/public ./public
+COPY --from=builder --chown=quantflow:quantflow /app/.next/standalone ./
+COPY --from=builder --chown=quantflow:quantflow /app/.next/static ./.next/static
+
+USER quantflow
+
+EXPOSE 3000
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
+    CMD wget -q -O - http://localhost:3000/api/health || exit 1
+
+CMD ["node", "server.js"]

@@ -1,0 +1,285 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "quantflow"
+version = "0.1.0"
+description = "Institutional-grade quantitative research and trading signal platform"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Proprietary" }
+authors = [{ name = "QuantFlow Team" }]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Financial and Insurance Industry",
+    "License :: Other/Proprietary License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Office/Business :: Financial :: Investment",
+    "Typing :: Typed",
+]
+
+dependencies = [
+    # Core
+    "numpy>=1.26.0",
+    "pandas>=2.1.0",
+    "polars>=0.20.0",
+    "scipy>=1.11.0",
+    "statsmodels>=0.14.0",
+    "arch>=6.1.0",
+    "pykalman>=0.9.7",
+
+    # Machine Learning
+    "scikit-learn>=1.3.0",
+    "xgboost>=2.0.0",
+    "lightgbm>=4.2.0",
+    "catboost>=1.2.0",
+    "torch>=2.1.0",
+    "torchvision>=0.16.0",
+    "transformers>=4.35.0",
+    "datasets>=2.15.0",
+
+    # Deep Reinforcement Learning
+    "stable-baselines3>=2.2.0",
+    "gymnasium>=0.29.0",
+
+    # Risk & Portfolio
+    "cvxpy>=1.4.0",
+    "pyportfolioopt>=1.5.0",
+    "riskfolio-lib>=6.0.0",
+    "QuantLib-Python>=1.33.0",
+
+    # Time Series
+    "sktime>=0.24.0",
+    "darts>=0.26.0",
+    "prophet>=1.1.5",
+    "neuralprophet>=0.6.0",
+    "tsfresh>=0.20.0",
+    "pmdarima>=2.0.0",
+
+    # NLP & Alternative Data
+    "spacy>=3.7.0",
+    "sentence-transformers>=2.2.0",
+    "nltk>=3.8.0",
+    "textblob>=0.17.0",
+    "vaderSentiment>=3.3.0",
+
+    # Market Data
+    "yfinance>=0.2.0",
+    "alpha-vantage>=2.3.0",
+    "polygon-api-client>=1.14.0",
+    "fredapi>=0.5.0",
+    "quandl>=3.7.0",
+
+    # Web Scraping & Agents
+    "httpx>=0.25.0",
+    "playwright>=1.40.0",
+    "beautifulsoup4>=4.12.0",
+    "lxml>=4.9.0",
+    "openai>=1.6.0",
+    "anthropic>=0.8.0",
+
+    # Backend
+    "fastapi>=0.104.0",
+    "uvicorn[standard]>=0.24.0",
+    "celery>=5.3.0",
+    "redis>=5.0.0",
+    "sqlalchemy>=2.0.0",
+    "asyncpg>=0.29.0",
+    "alembic>=1.12.0",
+    "pydantic>=2.5.0",
+    "pydantic-settings>=2.1.0",
+
+    # Monitoring
+    "prometheus-client>=0.19.0",
+    "structlog>=23.2.0",
+    "sentry-sdk>=1.38.0",
+
+    # MLflow for experiment tracking
+    "mlflow>=2.9.0",
+
+    # Optimization
+    "optuna>=3.4.0",
+
+    # SHAP for explainability
+    "shap>=0.43.0",
+
+    # Additional utilities
+    "python-dateutil>=2.8.0",
+    "pytz>=2023.3",
+    "tzdata>=2023.3",
+    "tenacity>=8.2.0",
+    "joblib>=1.3.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    # Testing
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.1.0",
+    "pytest-mock>=3.12.0",
+    "hypothesis>=6.92.0",
+
+    # Type checking
+    "mypy>=1.7.0",
+    "types-python-dateutil>=2.8.0",
+    "types-pytz>=2023.3.0",
+    "types-redis>=4.6.0",
+
+    # Linting & Formatting
+    "ruff>=0.1.0",
+    "black>=23.11.0",
+    "isort>=5.12.0",
+
+    # Documentation
+    "mkdocs>=1.5.0",
+    "mkdocs-material>=9.5.0",
+    "mkdocstrings[python]>=0.24.0",
+]
+
+[project.scripts]
+quantflow = "quantflow.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["quantflow"]
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = [
+    "-ra",
+    "-q",
+    "--strict-markers",
+    "--strict-config",
+    # Coverage flags removed from default addopts: they add significant
+    # overhead and are only useful when running the full test suite.
+    # Run with coverage explicitly: pytest tests/ --cov=quantflow --cov-fail-under=80
+]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+    "backtest: marks tests as backtest tests",
+]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+follow_imports = "silent"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = [
+    "arch.*",
+    "cvxpy.*",
+    "darts.*",
+    "gymnasium.*",
+    "lightgbm.*",
+    "mlflow.*",
+    "pmdarima.*",
+    "prophet.*",
+    "pykalman.*",
+    "pyportfolioopt.*",
+    "QuantLib.*",
+    "riskfolio_lib.*",
+    "shap.*",
+    "sktime.*",
+    "stable_baselines3.*",
+    "statsmodels.*",
+    "tsfresh.*",
+    "xgboost.*",
+    "yfinance.*",
+]
+ignore_missing_imports = true
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # Pyflakes
+    "I",      # isort
+    "B",      # flake8-bugbear
+    "C4",     # flake8-comprehensions
+    "UP",     # pyupgrade
+    "ARG",    # flake8-unused-arguments
+    "SIM",    # flake8-simplify
+    "TCH",    # flake8-type-checking
+    "RUF",    # Ruff-specific rules
+]
+ignore = [
+    "E501",   # line too long (handled by black)
+    "B008",   # do not perform function calls in argument defaults
+    "B904",   # raise without from inside except
+    "ARG001", # unused function argument (common in abstract methods)
+]
+
+[tool.ruff.per-file-ignores]
+"tests/**/*" = ["ARG001", "S101"]
+"__init__.py" = ["F401"]
+
+[tool.black]
+target-version = ["py311"]
+line-length = 100
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.git
+    | \.hg
+    | \.mypy_cache
+    | \.tox
+    | \.venv
+    | _build
+    | buck-out
+    | build
+    | dist
+    | node_modules
+)/
+'''
+
+[tool.isort]
+profile = "black"
+line_length = 100
+known_first_party = ["quantflow"]
+known_third_party = [
+    "numpy",
+    "pandas",
+    "polars",
+    "scipy",
+    "sklearn",
+    "torch",
+    "fastapi",
+    "pydantic",
+    "sqlalchemy",
+    "httpx",
+]
+
+[tool.coverage.run]
+source = ["quantflow"]
+branch = true
+omit = [
+    "tests/*",
+    "quantflow/__init__.py",
+    "*/__init__.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+]

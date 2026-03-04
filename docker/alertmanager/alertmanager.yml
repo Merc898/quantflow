@@ -1,0 +1,107 @@
+# QuantFlow — Alertmanager configuration
+# Routes alerts to the appropriate channel based on severity and team.
+#
+# Receivers:
+#   slack-critical   — #quantflow-alerts Slack channel (all critical)
+#   slack-warning    — #quantflow-warnings Slack channel
+#   pagerduty        — PagerDuty (critical only, for on-call wake-ups)
+#   email-platform   — Platform team email
+#
+# Set secrets via environment variables or Docker secrets:
+#   SLACK_WEBHOOK_URL
+#   PAGERDUTY_INTEGRATION_KEY
+#   SMTP_PASSWORD
+
+global:
+  smtp_smarthost: "smtp.gmail.com:587"
+  smtp_from: "alerts@quantflow.io"
+  smtp_auth_username: "alerts@quantflow.io"
+  smtp_auth_password: "${SMTP_PASSWORD}"
+  slack_api_url: "${SLACK_WEBHOOK_URL}"
+  resolve_timeout: 5m
+
+# ---------------------------------------------------------------------------
+# Routing tree
+# ---------------------------------------------------------------------------
+route:
+  receiver: slack-warning  # default
+  group_by: ["alertname", "team"]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+
+  routes:
+    # Critical alerts → PagerDuty + Slack critical channel
+    - match:
+        severity: critical
+      receiver: pagerduty
+      continue: true  # also send to slack-critical
+
+    - match:
+        severity: critical
+      receiver: slack-critical
+
+    # Warning alerts → Slack warning channel + email
+    - match:
+        severity: warning
+      receiver: slack-warning
+
+    # Platform team alerts
+    - match:
+        team: platform
+      receiver: email-platform
+      group_wait: 2m
+
+# ---------------------------------------------------------------------------
+# Inhibition rules — suppress lower severity when higher is active
+# ---------------------------------------------------------------------------
+inhibit_rules:
+  - source_match:
+      severity: critical
+    target_match:
+      severity: warning
+    equal: ["alertname"]
+
+# ---------------------------------------------------------------------------
+# Receivers
+# ---------------------------------------------------------------------------
+receivers:
+
+  - name: pagerduty
+    pagerduty_configs:
+      - routing_key: "${PAGERDUTY_INTEGRATION_KEY}"
+        description: "{{ .CommonAnnotations.summary }}"
+        details:
+          description: "{{ .CommonAnnotations.description }}"
+          runbook: "{{ .CommonAnnotations.runbook }}"
+        severity: "{{ .CommonLabels.severity }}"
+
+  - name: slack-critical
+    slack_configs:
+      - channel: "#quantflow-alerts"
+        color: "danger"
+        title: "[CRITICAL] {{ .CommonAnnotations.summary }}"
+        text: |
+          *Description:* {{ .CommonAnnotations.description }}
+          *Runbook:* {{ .CommonAnnotations.runbook }}
+          *Alerts:* {{ range .Alerts }}• {{ .Labels.alertname }}{{ end }}
+        send_resolved: true
+
+  - name: slack-warning
+    slack_configs:
+      - channel: "#quantflow-warnings"
+        color: "warning"
+        title: "[WARNING] {{ .CommonAnnotations.summary }}"
+        text: |
+          *Description:* {{ .CommonAnnotations.description }}
+        send_resolved: true
+
+  - name: email-platform
+    email_configs:
+      - to: "platform-team@quantflow.io"
+        subject: "[QuantFlow] {{ .CommonAnnotations.summary }}"
+        body: |
+          Alert: {{ .CommonAnnotations.summary }}
+          Description: {{ .CommonAnnotations.description }}
+          Severity: {{ .CommonLabels.severity }}
+          Fired at: {{ .StartsAt }}

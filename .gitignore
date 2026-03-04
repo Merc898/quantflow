@@ -1,0 +1,151 @@
+# ============================================================
+# QuantFlow — Git Ignore Rules
+# ============================================================
+
+# ------------------------------------------------------------
+# Environment / Secrets — never commit real credentials
+# ------------------------------------------------------------
+.env
+.env.local
+.env.*.local
+# .env.example is intentionally NOT listed here — it is safe to commit
+
+# ------------------------------------------------------------
+# Python
+# ------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+.env.bak
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Pytest
+.pytest_cache/
+.hypothesis/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+*.py,cover
+nosetests.xml
+test-results/
+
+# MyPy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Ruff / linters
+.ruff_cache/
+
+# Type stubs
+*.pyi.bak
+
+# ------------------------------------------------------------
+# ML / Data Science
+# ------------------------------------------------------------
+mlruns/
+mlartifacts/
+*.pkl
+*.joblib
+*.h5
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+notebooks/.ipynb_checkpoints/
+.ipynb_checkpoints/
+
+# Data files (large)
+data/raw/
+data/processed/
+*.parquet
+*.feather
+*.arrow
+
+# ------------------------------------------------------------
+# Database migrations (keep alembic.ini + versions/, ignore auto-generated SQLite)
+# ------------------------------------------------------------
+*.db
+*.sqlite3
+
+# ------------------------------------------------------------
+# Docker
+# ------------------------------------------------------------
+docker/secrets/
+
+# ------------------------------------------------------------
+# Node.js / Next.js Frontend
+# ------------------------------------------------------------
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/.env.local
+frontend/.env.*.local
+frontend/build/
+frontend/.turbo/
+frontend/coverage/
+
+# ------------------------------------------------------------
+# IDE / Editor
+# ------------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ------------------------------------------------------------
+# Logs
+# ------------------------------------------------------------
+*.log
+logs/
+*.pid
+
+# ------------------------------------------------------------
+# Celery
+# ------------------------------------------------------------
+celerybeat-schedule
+celerybeat.pid
+
+# ------------------------------------------------------------
+# Temporary files
+# ------------------------------------------------------------
+*.tmp
+*.bak
+*.orig
+.cache/
+tmp/
+temp/

@@ -1,0 +1,236 @@
+name: CD — Build, Push & Deploy
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - "v*.*.*"  # e.g. v1.2.3
+
+concurrency:
+  group: cd-${{ github.ref }}
+  cancel-in-progress: false  # never cancel a running deploy
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME_API: ${{ github.repository }}/quantflow-api
+  IMAGE_NAME_FRONTEND: ${{ github.repository }}/quantflow-frontend
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Build and push Docker images
+  # ---------------------------------------------------------------------------
+  build-and-push:
+    name: Build & Push Images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      api_image: ${{ steps.meta-api.outputs.tags }}
+      frontend_image: ${{ steps.meta-frontend.outputs.tags }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Determine version
+        id: version
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          else
+            echo "version=sha-${GITHUB_SHA::8}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Set up QEMU (multi-arch)
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # ---- API image ----
+      - name: Extract API image metadata
+        id: meta-api
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_API }}
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix=sha-
+
+      - name: Build and push API image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta-api.outputs.tags }}
+          labels: ${{ steps.meta-api.outputs.labels }}
+          build-args: |
+            APP_VERSION=${{ steps.version.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # ---- Frontend image ----
+      - name: Extract frontend image metadata
+        id: meta-frontend
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_FRONTEND }}
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=sha,prefix=sha-
+
+      - name: Build and push frontend image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile.frontend
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta-frontend.outputs.tags }}
+          labels: ${{ steps.meta-frontend.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ---------------------------------------------------------------------------
+  # Deploy to staging (on every push to main)
+  # ---------------------------------------------------------------------------
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    environment:
+      name: staging
+      url: https://staging.quantflow.io
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: v1.28.0
+
+      - name: Configure kubeconfig (staging cluster)
+        run: |
+          echo "${{ secrets.KUBE_CONFIG_STAGING }}" | base64 -d > /tmp/kubeconfig
+          export KUBECONFIG=/tmp/kubeconfig
+
+      - name: Update image tags in k8s manifests
+        run: |
+          IMAGE_TAG="sha-${GITHUB_SHA::8}"
+          # Use kustomize or sed to update image references
+          sed -i "s|quantflow-api:latest|${{ env.REGISTRY }}/${{ env.IMAGE_NAME_API }}:${IMAGE_TAG}|g" k8s/api-deployment.yaml
+          sed -i "s|quantflow-frontend:latest|${{ env.REGISTRY }}/${{ env.IMAGE_NAME_FRONTEND }}:${IMAGE_TAG}|g" k8s/frontend-deployment.yaml
+          sed -i "s|quantflow-api:latest|${{ env.REGISTRY }}/${{ env.IMAGE_NAME_API }}:${IMAGE_TAG}|g" k8s/celery-deployment.yaml
+
+      - name: Apply namespace and config
+        env:
+          KUBECONFIG: /tmp/kubeconfig
+        run: |
+          kubectl apply -f k8s/namespace.yaml
+          kubectl apply -f k8s/configmap.yaml
+
+      - name: Deploy API
+        env:
+          KUBECONFIG: /tmp/kubeconfig
+        run: kubectl apply -f k8s/api-deployment.yaml
+
+      - name: Deploy Celery
+        env:
+          KUBECONFIG: /tmp/kubeconfig
+        run: kubectl apply -f k8s/celery-deployment.yaml
+
+      - name: Deploy frontend
+        env:
+          KUBECONFIG: /tmp/kubeconfig
+        run: kubectl apply -f k8s/frontend-deployment.yaml
+
+      - name: Apply HPA and ingress
+        env:
+          KUBECONFIG: /tmp/kubeconfig
+        run: |
+          kubectl apply -f k8s/hpa.yaml
+          kubectl apply -f k8s/ingress.yaml
+
+      - name: Wait for rollout
+        env:
+          KUBECONFIG: /tmp/kubeconfig
+        run: |
+          kubectl rollout status deployment/quantflow-api -n quantflow --timeout=5m
+          kubectl rollout status deployment/quantflow-frontend -n quantflow --timeout=5m
+          kubectl rollout status deployment/quantflow-celery-worker -n quantflow --timeout=5m
+
+      - name: Smoke test staging
+        run: |
+          sleep 10
+          curl -sf https://staging.quantflow.io/health | grep '"status":"ok"'
+
+  # ---------------------------------------------------------------------------
+  # Deploy to production (on semver tags only)
+  # ---------------------------------------------------------------------------
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [build-and-push, deploy-staging]
+    if: startsWith(github.ref, 'refs/tags/v')
+    environment:
+      name: production
+      url: https://app.quantflow.io
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: v1.28.0
+
+      - name: Configure kubeconfig (production cluster)
+        run: |
+          echo "${{ secrets.KUBE_CONFIG_PRODUCTION }}" | base64 -d > /tmp/kubeconfig
+
+      - name: Update image tags
+        run: |
+          VERSION="${{ needs.build-and-push.outputs.version }}"
+          sed -i "s|quantflow-api:latest|${{ env.REGISTRY }}/${{ env.IMAGE_NAME_API }}:${VERSION}|g" k8s/api-deployment.yaml
+          sed -i "s|quantflow-frontend:latest|${{ env.REGISTRY }}/${{ env.IMAGE_NAME_FRONTEND }}:${VERSION}|g" k8s/frontend-deployment.yaml
+          sed -i "s|quantflow-api:latest|${{ env.REGISTRY }}/${{ env.IMAGE_NAME_API }}:${VERSION}|g" k8s/celery-deployment.yaml
+
+      - name: Apply all manifests
+        env:
+          KUBECONFIG: /tmp/kubeconfig
+        run: |
+          kubectl apply -f k8s/namespace.yaml
+          kubectl apply -f k8s/configmap.yaml
+          kubectl apply -f k8s/api-deployment.yaml
+          kubectl apply -f k8s/celery-deployment.yaml
+          kubectl apply -f k8s/frontend-deployment.yaml
+          kubectl apply -f k8s/hpa.yaml
+          kubectl apply -f k8s/ingress.yaml
+
+      - name: Wait for production rollout
+        env:
+          KUBECONFIG: /tmp/kubeconfig
+        run: |
+          kubectl rollout status deployment/quantflow-api -n quantflow --timeout=10m
+          kubectl rollout status deployment/quantflow-frontend -n quantflow --timeout=10m
+
+      - name: Create Sentry release
+        uses: getsentry/action-release@v1
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: quantflow
+          SENTRY_PROJECT: quantflow-api
+        with:
+          environment: production
+          version: ${{ needs.build-and-push.outputs.version }}
