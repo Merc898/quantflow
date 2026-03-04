@@ -6,11 +6,10 @@ Outputs 1, 5, and 21-day return forecasts with uncertainty estimates.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
-import pandas as pd
 from scipy import stats
 
 from quantflow.config.constants import (
@@ -22,6 +21,9 @@ from quantflow.config.constants import (
 )
 from quantflow.config.logging import get_logger
 from quantflow.models.base import BaseQuantModel, ModelOutput
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 logger = get_logger(__name__)
 
@@ -64,7 +66,7 @@ class ARIMAModel(BaseQuantModel):
     # Fit
     # ------------------------------------------------------------------
 
-    def fit(self, data: pd.DataFrame) -> "ARIMAModel":
+    def fit(self, data: pd.DataFrame) -> ARIMAModel:
         """Fit ARIMA via auto-order selection on log returns.
 
         Args:
@@ -144,21 +146,18 @@ class ARIMAModel(BaseQuantModel):
         forecast_std = max(ci_width / (2 * 1.96), 1e-6)
 
         # Ljung-Box test on residuals
-        lb_result = None
         lb_pval: float = 0.0
         if self._log_returns is not None:
             try:
                 resid = self._model.resid()
-                lb_result = stats.acf(resid, nlags=10, fft=False)
+                stats.acf(resid, nlags=10, fft=False)
                 # Simple proxy: use last autocorrelation as check
                 lb_pval = 0.5  # placeholder — pmdarima residual check
             except Exception:
                 pass
 
         # Signal: sign(forecast) * |forecast| / rolling_vol (z-score then tanh)
-        raw_signal = (
-            forecast_return / (self._vol_estimate * np.sqrt(h) + 1e-8)
-        )
+        raw_signal = forecast_return / (self._vol_estimate * np.sqrt(h) + 1e-8)
         signal = self.normalise_signal(raw_signal)
 
         confidence = min(0.7, max(0.3, 0.6 - abs(raw_signal) * 0.05))
@@ -175,7 +174,7 @@ class ARIMAModel(BaseQuantModel):
         return ModelOutput(
             model_name=self.model_name,
             symbol=self.symbol,
-            timestamp=datetime.now(tz=timezone.utc),
+            timestamp=datetime.now(tz=UTC),
             signal=signal,
             confidence=confidence,
             forecast_return=round(forecast_return, 6),
@@ -189,7 +188,7 @@ class ARIMAModel(BaseQuantModel):
         return ModelOutput(
             model_name=self.model_name,
             symbol=self.symbol,
-            timestamp=datetime.now(tz=timezone.utc),
+            timestamp=datetime.now(tz=UTC),
             signal=0.0,
             confidence=0.0,
             forecast_return=0.0,

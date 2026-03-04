@@ -13,15 +13,17 @@ Architecture option: vanilla Transformer encoder (no decoder needed for predicti
 from __future__ import annotations
 
 import math
-from datetime import datetime, timezone
-from typing import Any
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
-import pandas as pd
 
 from quantflow.config.constants import WALK_FORWARD_GAP
 from quantflow.config.logging import get_logger
 from quantflow.models.base import BaseQuantModel, ModelOutput
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 logger = get_logger(__name__)
 
@@ -31,8 +33,8 @@ _N_HEADS = 8
 _FF_DIM = 512
 _N_LAYERS = 3
 _DROPOUT = 0.1
-_PATCH_LEN = 16       # patch length in time steps
-_SEQ_LEN = 64         # input sequence length (must be divisible by PATCH_LEN)
+_PATCH_LEN = 16  # patch length in time steps
+_SEQ_LEN = 64  # input sequence length (must be divisible by PATCH_LEN)
 _MAX_EPOCHS = 80
 _PATIENCE = 10
 _LR = 5e-4
@@ -59,9 +61,7 @@ def _sinusoidal_pe(max_len: int, d_model: int) -> Any:
     import torch
 
     position = torch.arange(max_len).unsqueeze(1).float()
-    div_term = torch.exp(
-        torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model)
-    )
+    div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
     pe = torch.zeros(max_len, d_model)
     pe[:, 0::2] = torch.sin(position * div_term)
     pe[:, 1::2] = torch.cos(position * div_term)
@@ -120,7 +120,7 @@ def _build_transformer(n_features: int, n_patches: int) -> Any:
                 dim_feedforward=_FF_DIM,
                 dropout=_DROPOUT,
                 batch_first=True,
-                norm_first=True,   # pre-norm for training stability
+                norm_first=True,  # pre-norm for training stability
             )
             self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=_N_LAYERS)
 
@@ -135,15 +135,13 @@ def _build_transformer(n_features: int, n_patches: int) -> Any:
             x_patches = x[:, : n_p * _PATCH_LEN, :].reshape(b, n_p, _PATCH_LEN, f)
 
             tokens = self.patch_embed(x_patches)  # (b, n_patches, D)
-            tokens = tokens + self.pos_embed + self.sin_pe[:, :n_p, :]
+            tokens = tokens + self.pos_embed + self.sin_pe[:, :n_p, :]  # type: ignore[index]
 
             # Causal mask: prevent attending to future patches
-            mask = torch.triu(
-                torch.ones(n_p, n_p, device=x.device) * float("-inf"), diagonal=1
-            )
+            mask = torch.triu(torch.ones(n_p, n_p, device=x.device) * float("-inf"), diagonal=1)
             enc = self.encoder(tokens, mask=mask)  # (b, n_patches, D)
 
-            last = enc[:, -1, :]   # use last patch token for prediction
+            last = enc[:, -1, :]  # use last patch token for prediction
             mean = self.mean_head(last).squeeze(-1)
             logvar = self.logvar_head(last).squeeze(-1)
             return mean, logvar
@@ -218,7 +216,7 @@ def _train_transformer(
     no_improve = 0
     history: dict[str, list[float]] = {"train": [], "val": []}
 
-    for epoch in range(max_epochs):
+    for _epoch in range(max_epochs):
         model.train()
         epoch_loss = 0.0
         for Xb, yb in loader:
@@ -299,7 +297,7 @@ class TimeSeriesTransformerModel(BaseQuantModel):
     # Fit
     # ------------------------------------------------------------------
 
-    def fit(self, data: pd.DataFrame) -> "TimeSeriesTransformerModel":
+    def fit(self, data: pd.DataFrame) -> TimeSeriesTransformerModel:
         """Fit the Transformer on feature sequences.
 
         Args:
@@ -324,9 +322,7 @@ class TimeSeriesTransformerModel(BaseQuantModel):
 
         X_raw, y_raw, _ = _build_xy(features, close, self.horizon)
         if len(X_raw) < self.seq_len + 50:
-            raise ValueError(
-                f"Insufficient data for Transformer: {len(X_raw)} rows."
-            )
+            raise ValueError(f"Insufficient data for Transformer: {len(X_raw)} rows.")
 
         self._n_features = X_raw.shape[1]
         self._vol_estimate = float(np.std(y_raw))
@@ -349,9 +345,7 @@ class TimeSeriesTransformerModel(BaseQuantModel):
         y_v = y_seqs[min(val_start, n - 10) :]
 
         self._model = _build_transformer(self._n_features, n_patches)
-        self._train_history = _train_transformer(
-            self._model, X_tr, y_tr, X_v, y_v
-        )
+        self._train_history = _train_transformer(self._model, X_tr, y_tr, X_v, y_v)
 
         self._is_fitted = True
         self._log_fit_complete(
@@ -425,7 +419,7 @@ class TimeSeriesTransformerModel(BaseQuantModel):
         return ModelOutput(
             model_name=self.model_name,
             symbol=self.symbol,
-            timestamp=datetime.now(tz=timezone.utc),
+            timestamp=datetime.now(tz=UTC),
             signal=signal,
             confidence=confidence,
             forecast_return=round(mean_raw, 6),
@@ -442,7 +436,7 @@ class TimeSeriesTransformerModel(BaseQuantModel):
         return ModelOutput(
             model_name=self.model_name,
             symbol=self.symbol,
-            timestamp=datetime.now(tz=timezone.utc),
+            timestamp=datetime.now(tz=UTC),
             signal=0.0,
             confidence=0.0,
             forecast_return=0.0,

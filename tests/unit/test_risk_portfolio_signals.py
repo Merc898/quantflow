@@ -8,12 +8,22 @@ Run with:
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING
+from unittest.mock import AsyncMock
+
 import numpy as np
 import pandas as pd
 import pytest
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, patch
 
+if TYPE_CHECKING:
+    from quantflow.portfolio.optimizer import MVOOptimizer
+    from quantflow.risk.stress_tester import StressTester
+    from quantflow.risk.var_es import RiskCalculator
+    from quantflow.signals.aggregator import AggregationResult, EnsembleAggregator
+    from quantflow.signals.calibrator import DynamicWeightCalibrator
+    from quantflow.signals.recommendation import FinalRecommendation, RecommendationEngine
+    from quantflow.signals.regime_detector import RegimeDetector
 
 # ---------------------------------------------------------------------------
 # Shared fixtures
@@ -38,13 +48,15 @@ def daily_returns(rng: np.random.Generator) -> pd.Series:
 def multi_asset_returns(rng: np.random.Generator) -> pd.DataFrame:
     """300 days × 5 assets — correlated synthetic returns."""
     n = 300
-    cov = np.array([
-        [1.0, 0.6, 0.4, 0.3, 0.2],
-        [0.6, 1.0, 0.5, 0.3, 0.1],
-        [0.4, 0.5, 1.0, 0.4, 0.2],
-        [0.3, 0.3, 0.4, 1.0, 0.3],
-        [0.2, 0.1, 0.2, 0.3, 1.0],
-    ]) * (0.01**2)
+    cov = np.array(
+        [
+            [1.0, 0.6, 0.4, 0.3, 0.2],
+            [0.6, 1.0, 0.5, 0.3, 0.1],
+            [0.4, 0.5, 1.0, 0.4, 0.2],
+            [0.3, 0.3, 0.4, 1.0, 0.3],
+            [0.2, 0.1, 0.2, 0.3, 1.0],
+        ]
+    ) * (0.01**2)
     L = np.linalg.cholesky(cov)
     z = rng.standard_normal((n, 5))
     r = z @ L.T
@@ -55,10 +67,9 @@ def multi_asset_returns(rng: np.random.Generator) -> pd.DataFrame:
 @pytest.fixture()
 def model_outputs() -> list:
     """Three synthetic ModelOutput objects."""
-    from datetime import datetime, timezone
     from quantflow.models.base import ModelOutput
 
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     return [
         ModelOutput(
             model_name="GARCHModel",
@@ -98,8 +109,9 @@ def model_outputs() -> list:
 class TestRiskCalculator:
     """Tests for the three VaR / ES methods."""
 
-    def _make_calc(self) -> "RiskCalculator":
+    def _make_calc(self) -> RiskCalculator:
         from quantflow.risk.var_es import RiskCalculator
+
         return RiskCalculator(window=252, n_simulations=1_000)
 
     def test_historical_var_is_negative_loss(self, daily_returns: pd.Series) -> None:
@@ -158,6 +170,7 @@ class TestRiskCalculator:
 
     def test_portfolio_var_structure(self, multi_asset_returns: pd.DataFrame) -> None:
         from quantflow.risk.var_es import RiskCalculator
+
         calc = RiskCalculator()
         n = multi_asset_returns.shape[1]
         w = np.ones(n) / n
@@ -168,6 +181,7 @@ class TestRiskCalculator:
 
     def test_insufficient_data_raises(self) -> None:
         from quantflow.risk.var_es import RiskCalculator
+
         calc = RiskCalculator()
         short = pd.Series(np.random.randn(5))
         with pytest.raises(ValueError, match="Insufficient"):
@@ -180,6 +194,7 @@ class TestRiskCalculator:
 
     def test_kupiec_pvalue_range(self) -> None:
         from quantflow.risk.var_es import RiskCalculator
+
         # Well-calibrated model: ~1% violations at 99% confidence
         n = 500
         violations = np.zeros(n, dtype=int)
@@ -189,6 +204,7 @@ class TestRiskCalculator:
 
     def test_christoffersen_pvalue_range(self) -> None:
         from quantflow.risk.var_es import RiskCalculator
+
         # Independent violations
         violations = np.array([1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1], dtype=int)
         pvalue = RiskCalculator._christoffersen_test(violations)
@@ -213,6 +229,7 @@ class TestEVTRiskModel:
 
     def test_fit_returns_result(self, daily_returns: pd.Series) -> None:
         from quantflow.risk.evt import EVTRiskModel
+
         model = EVTRiskModel()
         result = model.fit(daily_returns)
         assert result.threshold > 0.0
@@ -222,6 +239,7 @@ class TestEVTRiskModel:
 
     def test_extreme_var_worse_than_99(self, daily_returns: pd.Series) -> None:
         from quantflow.risk.evt import EVTRiskModel
+
         model = EVTRiskModel()
         result = model.fit(daily_returns)
         # 99.9% VaR should be a larger loss than 99% VaR
@@ -229,6 +247,7 @@ class TestEVTRiskModel:
 
     def test_es_worse_than_var(self, daily_returns: pd.Series) -> None:
         from quantflow.risk.evt import EVTRiskModel
+
         model = EVTRiskModel()
         result = model.fit(daily_returns)
         assert result.es_99 >= result.var_99
@@ -236,6 +255,7 @@ class TestEVTRiskModel:
 
     def test_hill_estimator_positive(self, daily_returns: pd.Series) -> None:
         from quantflow.risk.evt import EVTRiskModel
+
         model = EVTRiskModel()
         result = model.fit(daily_returns)
         # Hill estimator should be positive for fat-tailed data
@@ -243,6 +263,7 @@ class TestEVTRiskModel:
 
     def test_gpd_fit_xi_finite(self, daily_returns: pd.Series) -> None:
         from quantflow.risk.evt import EVTRiskModel
+
         model = EVTRiskModel()
         result = model.fit(daily_returns)
         assert np.isfinite(result.xi)
@@ -250,6 +271,7 @@ class TestEVTRiskModel:
 
     def test_insufficient_exceedances_raises(self, rng: np.random.Generator) -> None:
         from quantflow.risk.evt import EVTRiskModel
+
         # Very short series — unlikely to have 20 exceedances
         short = pd.Series(rng.normal(0, 0.005, 25))
         model = EVTRiskModel(threshold_quantile=0.95)
@@ -265,13 +287,14 @@ class TestEVTRiskModel:
 class TestStressTester:
     """Tests for historical and factor shock stress testing."""
 
-    def _make_tester(self) -> "StressTester":
+    def _make_tester(self) -> StressTester:
         from quantflow.risk.stress_tester import StressTester
+
         return StressTester(n_stress_scenarios=500)  # Small for speed
 
     def test_historical_scenario_covid(self, multi_asset_returns: pd.DataFrame) -> None:
         tester = self._make_tester()
-        weights = {a: 0.2 for a in multi_asset_returns.columns}
+        weights = dict.fromkeys(multi_asset_returns.columns, 0.2)
         # Create returns covering the COVID period
         covid_returns = multi_asset_returns.copy()
         covid_returns.index = pd.bdate_range("2020-02-01", periods=len(covid_returns))
@@ -283,11 +306,9 @@ class TestStressTester:
         self, multi_asset_returns: pd.DataFrame
     ) -> None:
         tester = self._make_tester()
-        weights = {a: 0.2 for a in multi_asset_returns.columns}
+        weights = dict.fromkeys(multi_asset_returns.columns, 0.2)
         # No data matches the scenario window → returns neutral result
-        result = tester.run_historical_scenario(
-            weights, multi_asset_returns, "covid_crash_2020"
-        )
+        result = tester.run_historical_scenario(weights, multi_asset_returns, "covid_crash_2020")
         # Since synthetic data doesn't cover 2020, should be 0 or fallback
         assert isinstance(result.portfolio_return, float)
 
@@ -310,11 +331,9 @@ class TestStressTester:
         result = tester.run_factor_shock(weights, betas, {"equity_market": 0.10})
         assert result.portfolio_return > 0.0
 
-    def test_monte_carlo_stress_distribution(
-        self, multi_asset_returns: pd.DataFrame
-    ) -> None:
+    def test_monte_carlo_stress_distribution(self, multi_asset_returns: pd.DataFrame) -> None:
         tester = self._make_tester()
-        weights = {a: 0.2 for a in multi_asset_returns.columns}
+        weights = dict.fromkeys(multi_asset_returns.columns, 0.2)
         dist = tester.run_monte_carlo_stress(multi_asset_returns, weights, horizon=5)
         # Tail should be worse than median
         assert dist.p1 < dist.p50
@@ -323,6 +342,7 @@ class TestStressTester:
 
     def test_no_common_assets_raises(self) -> None:
         from quantflow.risk.stress_tester import StressTester
+
         tester = StressTester()
         weights = {"XYZ": 1.0}
         returns = pd.DataFrame({"AAPL": [0.01, -0.02, 0.03, 0.01]})
@@ -342,8 +362,9 @@ class TestMVOOptimizer:
     def require_cvxpy(self) -> None:
         pytest.importorskip("cvxpy")
 
-    def _make_optimizer(self) -> "MVOOptimizer":
+    def _make_optimizer(self) -> MVOOptimizer:
         from quantflow.portfolio.optimizer import MVOOptimizer
+
         return MVOOptimizer()
 
     def test_weights_sum_to_one(self, multi_asset_returns: pd.DataFrame) -> None:
@@ -354,6 +375,7 @@ class TestMVOOptimizer:
 
     def test_weights_within_bounds(self, multi_asset_returns: pd.DataFrame) -> None:
         from quantflow.portfolio.optimizer import MVOOptimizer
+
         opt = MVOOptimizer(max_weight=0.30, min_weight=0.01)
         result = opt.optimize(multi_asset_returns)
         for w in result.weights.values():
@@ -371,10 +393,9 @@ class TestMVOOptimizer:
         result = opt.optimize(multi_asset_returns, covariance_method="rmt")
         assert abs(sum(result.weights.values()) - 1.0) < 1e-4
 
-    def test_signal_return_method(
-        self, multi_asset_returns: pd.DataFrame
-    ) -> None:
+    def test_signal_return_method(self, multi_asset_returns: pd.DataFrame) -> None:
         from quantflow.portfolio.optimizer import MVOOptimizer
+
         opt = MVOOptimizer()
         signal_ret = pd.Series(
             [0.15, 0.10, 0.05, 0.08, 0.12],
@@ -401,15 +422,15 @@ class TestMVOOptimizer:
 
     def test_insufficient_data_raises(self, multi_asset_returns: pd.DataFrame) -> None:
         from quantflow.portfolio.optimizer import MVOOptimizer
+
         opt = MVOOptimizer()
         with pytest.raises(ValueError, match="observations"):
             opt.optimize(multi_asset_returns.iloc[:10])
 
-    def test_rmt_cleaned_cov_psd(
-        self, multi_asset_returns: pd.DataFrame
-    ) -> None:
+    def test_rmt_cleaned_cov_psd(self, multi_asset_returns: pd.DataFrame) -> None:
         """RMT-cleaned covariance must be positive semi-definite."""
         from quantflow.portfolio.optimizer import MVOOptimizer
+
         opt = MVOOptimizer()
         data = multi_asset_returns.values
         cov = np.cov(data.T)
@@ -432,6 +453,7 @@ class TestBlackLittermanOptimizer:
 
     def test_weights_sum_to_one(self, multi_asset_returns: pd.DataFrame) -> None:
         from quantflow.portfolio.black_litterman import BlackLittermanOptimizer
+
         opt = BlackLittermanOptimizer()
         market_weights = pd.Series(
             [0.3, 0.25, 0.2, 0.15, 0.1],
@@ -441,10 +463,9 @@ class TestBlackLittermanOptimizer:
         result = opt.optimize(multi_asset_returns, market_weights, views)
         assert abs(sum(result.weights.values()) - 1.0) < 1e-4
 
-    def test_no_views_uses_equilibrium(
-        self, multi_asset_returns: pd.DataFrame
-    ) -> None:
+    def test_no_views_uses_equilibrium(self, multi_asset_returns: pd.DataFrame) -> None:
         from quantflow.portfolio.black_litterman import BlackLittermanOptimizer
+
         opt = BlackLittermanOptimizer()
         market_weights = pd.Series(
             [0.3, 0.25, 0.2, 0.15, 0.1],
@@ -453,11 +474,10 @@ class TestBlackLittermanOptimizer:
         result = opt.optimize(multi_asset_returns, market_weights, signal_views={})
         assert abs(sum(result.weights.values()) - 1.0) < 1e-4
 
-    def test_bullish_view_increases_weight(
-        self, multi_asset_returns: pd.DataFrame
-    ) -> None:
+    def test_bullish_view_increases_weight(self, multi_asset_returns: pd.DataFrame) -> None:
         """A strong positive view on AAPL should generally increase its weight."""
         from quantflow.portfolio.black_litterman import BlackLittermanOptimizer
+
         opt = BlackLittermanOptimizer()
         market_weights = pd.Series(
             [0.20, 0.20, 0.20, 0.20, 0.20],
@@ -473,18 +493,15 @@ class TestBlackLittermanOptimizer:
         # AAPL weight should be higher with a strong bullish view
         assert with_view.weights["AAPL"] >= no_view.weights["AAPL"] - 0.05
 
-    def test_posterior_returns_in_metadata(
-        self, multi_asset_returns: pd.DataFrame
-    ) -> None:
+    def test_posterior_returns_in_metadata(self, multi_asset_returns: pd.DataFrame) -> None:
         from quantflow.portfolio.black_litterman import BlackLittermanOptimizer
+
         opt = BlackLittermanOptimizer()
         market_weights = pd.Series(
             [0.3, 0.25, 0.2, 0.15, 0.1],
             index=multi_asset_returns.columns,
         )
-        result = opt.optimize(
-            multi_asset_returns, market_weights, {"AAPL": 0.10}
-        )
+        result = opt.optimize(multi_asset_returns, market_weights, {"AAPL": 0.10})
         assert "posterior_returns" in result.metadata
         assert "AAPL" in result.metadata["posterior_returns"]
 
@@ -499,12 +516,14 @@ class TestHRPOptimizer:
 
     def test_weights_sum_to_one(self, multi_asset_returns: pd.DataFrame) -> None:
         from quantflow.portfolio.hrp import HRPOptimizer
+
         opt = HRPOptimizer()
         result = opt.optimize(multi_asset_returns)
         assert abs(sum(result.weights.values()) - 1.0) < 1e-4
 
     def test_all_weights_non_negative(self, multi_asset_returns: pd.DataFrame) -> None:
         from quantflow.portfolio.hrp import HRPOptimizer
+
         opt = HRPOptimizer()
         result = opt.optimize(multi_asset_returns)
         assert all(w >= -1e-8 for w in result.weights.values())
@@ -512,6 +531,7 @@ class TestHRPOptimizer:
     def test_diversified_weights(self, multi_asset_returns: pd.DataFrame) -> None:
         """HRP should produce reasonably diversified weights (no extreme concentration)."""
         from quantflow.portfolio.hrp import HRPOptimizer
+
         opt = HRPOptimizer()
         result = opt.optimize(multi_asset_returns)
         max_weight = max(result.weights.values())
@@ -520,12 +540,14 @@ class TestHRPOptimizer:
 
     def test_cluster_variance_positive(self) -> None:
         from quantflow.portfolio.hrp import HRPOptimizer
+
         cov = np.array([[0.01, 0.005], [0.005, 0.02]])
         var = HRPOptimizer._cluster_variance(cov, [0, 1])
         assert var > 0.0
 
     def test_correlation_distance_bounds(self) -> None:
         from quantflow.portfolio.hrp import HRPOptimizer
+
         corr = np.array([[1.0, 0.8], [0.8, 1.0]])
         dist = HRPOptimizer._correlation_distance(corr)
         assert np.all(dist >= 0.0)
@@ -534,6 +556,7 @@ class TestHRPOptimizer:
 
     def test_insufficient_data_raises(self, multi_asset_returns: pd.DataFrame) -> None:
         from quantflow.portfolio.hrp import HRPOptimizer
+
         opt = HRPOptimizer()
         with pytest.raises(ValueError, match="observations"):
             opt.optimize(multi_asset_returns.iloc[:5])
@@ -556,6 +579,7 @@ class TestSignalNormalizer:
 
     def test_output_clipped_to_range(self) -> None:
         from quantflow.signals.normalizer import SignalNormalizer
+
         norm = SignalNormalizer(zscore_clip=3.0)
         signal = self._make_signal()
         result = norm.normalize(signal)
@@ -564,6 +588,7 @@ class TestSignalNormalizer:
 
     def test_output_has_no_nan(self) -> None:
         from quantflow.signals.normalizer import SignalNormalizer
+
         norm = SignalNormalizer()
         signal = self._make_signal()
         result = norm.normalize(signal)
@@ -571,6 +596,7 @@ class TestSignalNormalizer:
 
     def test_winsorize_clips_extremes(self) -> None:
         from quantflow.signals.normalizer import SignalNormalizer
+
         norm = SignalNormalizer()
         signal = pd.Series([0.0] * 98 + [100.0, -100.0])
         winsorized = norm._winsorize(signal)
@@ -579,6 +605,7 @@ class TestSignalNormalizer:
 
     def test_rolling_zscore_output_finite(self) -> None:
         from quantflow.signals.normalizer import SignalNormalizer
+
         norm = SignalNormalizer()
         signal = self._make_signal()
         result = norm._rolling_zscore(signal)
@@ -586,6 +613,7 @@ class TestSignalNormalizer:
 
     def test_normalize_batch_all_models(self) -> None:
         from quantflow.signals.normalizer import SignalNormalizer
+
         norm = SignalNormalizer()
         signals = {f"model_{i}": self._make_signal() for i in range(3)}
         result = norm.normalize_batch(signals)
@@ -593,6 +621,7 @@ class TestSignalNormalizer:
 
     def test_empty_batch_returns_empty(self) -> None:
         from quantflow.signals.normalizer import SignalNormalizer
+
         norm = SignalNormalizer()
         result = norm.normalize_batch({})
         assert result == {}
@@ -606,13 +635,12 @@ class TestSignalNormalizer:
 class TestDynamicWeightCalibrator:
     """Tests for IC-based dynamic weight calibration."""
 
-    def _make_calibrator(self) -> "DynamicWeightCalibrator":
+    def _make_calibrator(self) -> DynamicWeightCalibrator:
         from quantflow.signals.calibrator import DynamicWeightCalibrator
+
         return DynamicWeightCalibrator(ic_lookback=60, ic_horizon=5)
 
-    def _make_signals_and_returns(
-        self, rng: np.random.Generator
-    ) -> tuple[dict, pd.Series]:
+    def _make_signals_and_returns(self, rng: np.random.Generator) -> tuple[dict, pd.Series]:
         n = 150
         idx = pd.bdate_range("2022-01-01", periods=n)
         returns = pd.Series(rng.normal(0, 0.01, n), index=idx)
@@ -632,6 +660,7 @@ class TestDynamicWeightCalibrator:
 
     def test_weights_within_floor_cap(self, rng: np.random.Generator) -> None:
         from quantflow.signals.calibrator import DynamicWeightCalibrator
+
         cal = DynamicWeightCalibrator(floor=0.05, cap=0.80)
         signals, returns = self._make_signals_and_returns(rng)
         weights = cal.compute_weights(signals, returns)
@@ -681,8 +710,9 @@ class TestDynamicWeightCalibrator:
 class TestEnsembleAggregator:
     """Tests for the two-stage signal aggregator."""
 
-    def _make_agg(self) -> "EnsembleAggregator":
+    def _make_agg(self) -> EnsembleAggregator:
         from quantflow.signals.aggregator import EnsembleAggregator
+
         return EnsembleAggregator()
 
     def test_output_signal_in_range(self, model_outputs: list) -> None:
@@ -700,20 +730,17 @@ class TestEnsembleAggregator:
         result = agg.aggregate([], sentiment_score=0.6)
         assert result.risk_scaled_signal > 0.0
 
-    def test_vol_targeting_scales_down_high_vol(
-        self, model_outputs: list
-    ) -> None:
+    def test_vol_targeting_scales_down_high_vol(self, model_outputs: list) -> None:
         from quantflow.signals.aggregator import EnsembleAggregator
+
         agg = EnsembleAggregator(target_vol=0.15)
         # High realized vol → scale down
         result = agg.aggregate(model_outputs, realized_vol=0.60)
-        raw = result.raw_composite
         assert result.vol_scale_factor < 1.0
 
-    def test_vol_targeting_scales_up_low_vol(
-        self, model_outputs: list
-    ) -> None:
+    def test_vol_targeting_scales_up_low_vol(self, model_outputs: list) -> None:
         from quantflow.signals.aggregator import EnsembleAggregator
+
         agg = EnsembleAggregator(target_vol=0.15)
         # Low realized vol → scale up
         result = agg.aggregate(model_outputs, realized_vol=0.05)
@@ -751,14 +778,16 @@ class TestEnsembleAggregator:
 class TestRegimeDetector:
     """Tests for composite regime detection."""
 
-    def _make_detector(self) -> "RegimeDetector":
+    def _make_detector(self) -> RegimeDetector:
         from quantflow.signals.regime_detector import RegimeDetector
+
         return RegimeDetector(sma_window=50)
 
     def test_detect_returns_regime_state(self, daily_returns: pd.Series) -> None:
         det = self._make_detector()
         state = det.detect(daily_returns)
         from quantflow.signals.regime_detector import RegimeState
+
         assert isinstance(state, RegimeState)
 
     def test_vol_regime_valid_label(self, daily_returns: pd.Series) -> None:
@@ -817,8 +846,9 @@ class TestRegimeDetector:
 class TestRecommendationEngine:
     """Tests for the final recommendation engine."""
 
-    def _make_engine(self) -> "RecommendationEngine":
+    def _make_engine(self) -> RecommendationEngine:
         from quantflow.signals.recommendation import RecommendationEngine
+
         return RecommendationEngine(models_available=10)
 
     def test_strong_buy_signal(self, daily_returns: pd.Series) -> None:
@@ -856,7 +886,7 @@ class TestRecommendationEngine:
 
     def test_crisis_regime_triggers_warning(self, daily_returns: pd.Series) -> None:
         from quantflow.signals.regime_detector import RegimeState
-        from datetime import datetime, timezone
+
         engine = self._make_engine()
         crisis_regime = RegimeState(
             volatility_regime="CRISIS",
@@ -905,19 +935,23 @@ class TestRecommendationEngine:
         )
         assert rec.max_drawdown_estimate <= 0.0
 
-    @pytest.mark.parametrize("signal,conf,expected", [
-        (0.6, 0.70, "STRONG_BUY"),
-        (0.3, 0.55, "BUY"),
-        (0.1, 0.45, "WEAK_BUY"),
-        (0.0, 0.50, "HOLD"),
-        (-0.1, 0.45, "WEAK_SELL"),
-        (-0.3, 0.55, "SELL"),
-        (-0.6, 0.70, "STRONG_SELL"),
-    ])
+    @pytest.mark.parametrize(
+        "signal,conf,expected",
+        [
+            (0.6, 0.70, "STRONG_BUY"),
+            (0.3, 0.55, "BUY"),
+            (0.1, 0.45, "WEAK_BUY"),
+            (0.0, 0.50, "HOLD"),
+            (-0.1, 0.45, "WEAK_SELL"),
+            (-0.3, 0.55, "SELL"),
+            (-0.6, 0.70, "STRONG_SELL"),
+        ],
+    )
     def test_signal_to_recommendation_mapping(
         self, signal: float, conf: float, expected: str
     ) -> None:
         from quantflow.signals.recommendation import RecommendationEngine
+
         result = RecommendationEngine._signal_to_recommendation(signal, conf)
         assert result == expected
 
@@ -930,8 +964,9 @@ class TestRecommendationEngine:
 class TestRecommendationExplainer:
     """Tests for the explainability engine."""
 
-    def _make_recommendation(self) -> "FinalRecommendation":
+    def _make_recommendation(self) -> FinalRecommendation:
         from quantflow.signals.recommendation import RecommendationEngine
+
         engine = RecommendationEngine()
         return engine.generate(
             "AAPL",
@@ -942,14 +977,16 @@ class TestRecommendationExplainer:
             rationale="",
         )
 
-    def _make_aggregation_result(self, model_outputs: list) -> "AggregationResult":
+    def _make_aggregation_result(self, model_outputs: list) -> AggregationResult:
         from quantflow.signals.aggregator import EnsembleAggregator
+
         agg = EnsembleAggregator()
         return agg.aggregate(model_outputs, sentiment_score=0.3)
 
     @pytest.mark.asyncio()
     async def test_explain_template_narrative(self, model_outputs: list) -> None:
         from quantflow.signals.explainer import RecommendationExplainer
+
         explainer = RecommendationExplainer(anthropic_agent=None)
         rec = self._make_recommendation()
         agg = self._make_aggregation_result(model_outputs)
@@ -962,6 +999,7 @@ class TestRecommendationExplainer:
     @pytest.mark.asyncio()
     async def test_explain_llm_narrative_success(self, model_outputs: list) -> None:
         from quantflow.signals.explainer import RecommendationExplainer
+
         mock_agent = AsyncMock()
         mock_agent.generate_recommendation_rationale = AsyncMock(
             return_value="AAPL is a strong buy due to robust earnings and services growth."
@@ -977,10 +1015,9 @@ class TestRecommendationExplainer:
     @pytest.mark.asyncio()
     async def test_explain_llm_fallback_on_failure(self, model_outputs: list) -> None:
         from quantflow.signals.explainer import RecommendationExplainer
+
         mock_agent = AsyncMock()
-        mock_agent.generate_recommendation_rationale = AsyncMock(
-            side_effect=Exception("API error")
-        )
+        mock_agent.generate_recommendation_rationale = AsyncMock(side_effect=Exception("API error"))
         explainer = RecommendationExplainer(anthropic_agent=mock_agent)
         rec = self._make_recommendation()
         agg = self._make_aggregation_result(model_outputs)
@@ -991,6 +1028,7 @@ class TestRecommendationExplainer:
     @pytest.mark.asyncio()
     async def test_confidence_decomposition_keys(self, model_outputs: list) -> None:
         from quantflow.signals.explainer import RecommendationExplainer
+
         explainer = RecommendationExplainer()
         rec = self._make_recommendation()
         agg = self._make_aggregation_result(model_outputs)
@@ -1002,6 +1040,7 @@ class TestRecommendationExplainer:
     @pytest.mark.asyncio()
     async def test_shap_features_included(self, model_outputs: list) -> None:
         from quantflow.signals.explainer import RecommendationExplainer
+
         explainer = RecommendationExplainer()
         rec = self._make_recommendation()
         agg = self._make_aggregation_result(model_outputs)

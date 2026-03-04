@@ -8,11 +8,11 @@ from __future__ import annotations
 
 import hashlib
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import bcrypt as _bcrypt_lib
-from jose import JWTError, jwt
+from jose import jwt
 
 from quantflow.api.auth.schemas import TokenPayload
 from quantflow.config.logging import get_logger
@@ -71,12 +71,12 @@ def create_access_token(
         Tuple of (token_string, expires_in_seconds).
     """
     delta = expires_delta or timedelta(minutes=settings.jwt_expire_minutes)
-    expire = datetime.now(tz=timezone.utc) + delta
+    expire = datetime.now(tz=UTC) + delta
     payload: dict[str, Any] = {
         "sub": str(subject),
         "tier": tier,
         "exp": int(expire.timestamp()),
-        "iat": int(datetime.now(tz=timezone.utc).timestamp()),
+        "iat": int(datetime.now(tz=UTC).timestamp()),
     }
     token = jwt.encode(
         payload,

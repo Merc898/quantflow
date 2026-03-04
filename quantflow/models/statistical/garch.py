@@ -6,17 +6,16 @@ Outputs a volatility forecast and regime label used by the signal engine.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any, Literal
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
-import pandas as pd
 from scipy import stats
 
 from quantflow.config.constants import (
     GARCH_P,
-    GARCH_Q,
     GARCH_PERSISTENCE_WARNING,
+    GARCH_Q,
     LOOKBACK_1Y,
     TRADING_DAYS_PER_YEAR,
     VOL_REGIME_EXTREME_THRESHOLD,
@@ -25,6 +24,9 @@ from quantflow.config.constants import (
 )
 from quantflow.config.logging import get_logger
 from quantflow.models.base import BaseQuantModel, ModelOutput
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 logger = get_logger(__name__)
 
@@ -80,7 +82,7 @@ class GARCHModel(BaseQuantModel):
     # Fit
     # ------------------------------------------------------------------
 
-    def fit(self, data: pd.DataFrame) -> "GARCHModel":
+    def fit(self, data: pd.DataFrame) -> GARCHModel:
         """Fit the GARCH model on log returns.
 
         Automatically tests for ARCH effects before fitting.
@@ -99,7 +101,7 @@ class GARCHModel(BaseQuantModel):
 
         # Jarque-Bera test: use Student-t distribution for heavy tails
         use_t = True  # default to t-dist
-        jb_stat, jb_pval = stats.jarque_bera(log_ret)
+        _jb_stat, jb_pval = stats.jarque_bera(log_ret)
         if jb_pval > 0.05:
             use_t = False  # near-normal residuals → Gaussian sufficient
 
@@ -114,7 +116,7 @@ class GARCHModel(BaseQuantModel):
         am = arch_model(
             log_ret,
             mean="Zero",
-            dist=dist,
+            dist=dist,  # type: ignore[arg-type]
             **vol_spec,
         )
 
@@ -226,7 +228,7 @@ class GARCHModel(BaseQuantModel):
         return ModelOutput(
             model_name=self.model_name,
             symbol=self.symbol,
-            timestamp=datetime.now(tz=timezone.utc),
+            timestamp=datetime.now(tz=UTC),
             signal=signal,
             confidence=confidence,
             forecast_return=0.0,  # GARCH forecasts vol, not return

@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import Literal
 
 import pandas as pd
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 
 from quantflow.config.logging import get_logger
 

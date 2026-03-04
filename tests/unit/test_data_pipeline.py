@@ -9,8 +9,8 @@ Tests cover:
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, patch
 
 import numpy as np
 import pandas as pd
@@ -24,7 +24,6 @@ from quantflow.data.features import (
     compute_momentum,
     compute_realized_vol,
     compute_returns,
-    compute_reversal,
     compute_rsi,
     compute_volume_features,
     rolling_zscore,
@@ -33,18 +32,15 @@ from quantflow.data.features import (
 from quantflow.data.fetchers.base import (
     DataFetchError,
     DataQualityError,
-    FetcherConfig,
     FundamentalsData,
     ValidationReport,
 )
 from quantflow.data.fetchers.yfinance_fetcher import YFinanceFetcher
 from quantflow.data.processors.pipeline import (
     ProcessedData,
-    PipelineConfig,
     remove_outliers_iqr,
     run_pipeline,
 )
-
 
 # ===========================================================================
 # Helpers
@@ -121,9 +117,7 @@ class TestBaseDataFetcherValidation:
         assert report.is_valid is False
 
     @pytest.mark.asyncio
-    async def test_ohlc_inconsistency_produces_warning(
-        self, fetcher: YFinanceFetcher
-    ) -> None:
+    async def test_ohlc_inconsistency_produces_warning(self, fetcher: YFinanceFetcher) -> None:
         df = _make_ohlcv()
         # Force high < close (inconsistency)
         df.loc[df.index[0], "high"] = df.loc[df.index[0], "close"] - 1.0
@@ -133,9 +127,7 @@ class TestBaseDataFetcherValidation:
         assert len(report.warnings) > 0
 
     @pytest.mark.asyncio
-    async def test_excessive_missing_data_is_error(
-        self, fetcher: YFinanceFetcher
-    ) -> None:
+    async def test_excessive_missing_data_is_error(self, fetcher: YFinanceFetcher) -> None:
         df = _make_ohlcv()
         # Introduce 10% missing close prices
         df.loc[df.index[:30], "close"] = np.nan
@@ -261,17 +253,13 @@ class TestComputeRealizedVol:
 
 class TestComputeVolumeFeatures:
     def test_columns(self, sample_ohlcv_data: pd.DataFrame) -> None:
-        feats = compute_volume_features(
-            sample_ohlcv_data["close"], sample_ohlcv_data["volume"]
-        )
+        feats = compute_volume_features(sample_ohlcv_data["close"], sample_ohlcv_data["volume"])
         assert "dollar_volume_21d" in feats.columns
         assert "amihud_illiquidity" in feats.columns
         assert "volume_z_score" in feats.columns
 
     def test_dollar_volume_positive(self, sample_ohlcv_data: pd.DataFrame) -> None:
-        feats = compute_volume_features(
-            sample_ohlcv_data["close"], sample_ohlcv_data["volume"]
-        )
+        feats = compute_volume_features(sample_ohlcv_data["close"], sample_ohlcv_data["volume"])
         valid = feats["dollar_volume_21d"].dropna()
         assert (valid > 0).all()
 
@@ -398,14 +386,12 @@ class TestRunPipeline:
 
         mock_fundamentals = FundamentalsData(
             symbol="AAPL",
-            as_of_date=datetime(2024, 1, 1, tzinfo=timezone.utc),
+            as_of_date=datetime(2024, 1, 1, tzinfo=UTC),
             pe_ratio=28.5,
             market_cap=3e12,
         )
 
-        with patch(
-            "quantflow.data.processors.pipeline.YFinanceFetcher"
-        ) as MockFetcher:
+        with patch("quantflow.data.processors.pipeline.YFinanceFetcher") as MockFetcher:
             instance = MockFetcher.return_value
             instance.fetch_ohlcv = AsyncMock(return_value=ohlcv)
             instance.validate = AsyncMock(
@@ -415,8 +401,8 @@ class TestRunPipeline:
 
             result: ProcessedData = await run_pipeline(
                 "AAPL",
-                start=datetime(2022, 1, 1, tzinfo=timezone.utc),
-                end=datetime(2023, 1, 1, tzinfo=timezone.utc),
+                start=datetime(2022, 1, 1, tzinfo=UTC),
+                end=datetime(2023, 1, 1, tzinfo=UTC),
             )
 
         assert result.symbol == "AAPL"
@@ -427,27 +413,21 @@ class TestRunPipeline:
 
     @pytest.mark.asyncio
     async def test_fetch_error_propagates(self) -> None:
-        with patch(
-            "quantflow.data.processors.pipeline.YFinanceFetcher"
-        ) as MockFetcher:
+        with patch("quantflow.data.processors.pipeline.YFinanceFetcher") as MockFetcher:
             instance = MockFetcher.return_value
-            instance.fetch_ohlcv = AsyncMock(
-                side_effect=DataFetchError("Network error")
-            )
+            instance.fetch_ohlcv = AsyncMock(side_effect=DataFetchError("Network error"))
             with pytest.raises(DataFetchError, match="Network error"):
                 await run_pipeline(
                     "INVALID_TICKER",
-                    start=datetime(2022, 1, 1, tzinfo=timezone.utc),
-                    end=datetime(2023, 1, 1, tzinfo=timezone.utc),
+                    start=datetime(2022, 1, 1, tzinfo=UTC),
+                    end=datetime(2023, 1, 1, tzinfo=UTC),
                 )
 
     @pytest.mark.asyncio
     async def test_fundamentals_failure_is_non_fatal(self) -> None:
         ohlcv = _make_ohlcv(n=300)
 
-        with patch(
-            "quantflow.data.processors.pipeline.YFinanceFetcher"
-        ) as MockFetcher:
+        with patch("quantflow.data.processors.pipeline.YFinanceFetcher") as MockFetcher:
             instance = MockFetcher.return_value
             instance.fetch_ohlcv = AsyncMock(return_value=ohlcv)
             instance.validate = AsyncMock(
@@ -459,8 +439,8 @@ class TestRunPipeline:
 
             result: ProcessedData = await run_pipeline(
                 "AAPL",
-                start=datetime(2022, 1, 1, tzinfo=timezone.utc),
-                end=datetime(2023, 1, 1, tzinfo=timezone.utc),
+                start=datetime(2022, 1, 1, tzinfo=UTC),
+                end=datetime(2023, 1, 1, tzinfo=UTC),
             )
 
         # Pipeline should succeed even if fundamentals fail
@@ -472,9 +452,7 @@ class TestRunPipeline:
     async def test_quality_failure_raises(self) -> None:
         ohlcv = _make_ohlcv(n=300)
 
-        with patch(
-            "quantflow.data.processors.pipeline.YFinanceFetcher"
-        ) as MockFetcher:
+        with patch("quantflow.data.processors.pipeline.YFinanceFetcher") as MockFetcher:
             instance = MockFetcher.return_value
             instance.fetch_ohlcv = AsyncMock(return_value=ohlcv)
             instance.validate = AsyncMock(
@@ -487,6 +465,6 @@ class TestRunPipeline:
             with pytest.raises(DataQualityError):
                 await run_pipeline(
                     "AAPL",
-                    start=datetime(2022, 1, 1, tzinfo=timezone.utc),
-                    end=datetime(2023, 1, 1, tzinfo=timezone.utc),
+                    start=datetime(2022, 1, 1, tzinfo=UTC),
+                    end=datetime(2023, 1, 1, tzinfo=UTC),
                 )

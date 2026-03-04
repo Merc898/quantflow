@@ -18,8 +18,8 @@ Run with::
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
-from typing import AsyncGenerator
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -30,6 +30,8 @@ from quantflow.api.auth.jwt import create_access_token, hash_password
 from quantflow.api.main import app
 from quantflow.db.models import User
 
+if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -53,7 +55,7 @@ def _make_user(
     user.stripe_subscription_id = None
     user.watchlist = ["AAPL", "MSFT"]
     user.alert_settings = {}
-    user.created_at = datetime(2025, 1, 1, tzinfo=timezone.utc)
+    user.created_at = datetime(2025, 1, 1, tzinfo=UTC)
     return user
 
 
@@ -108,11 +110,10 @@ async def free_client(free_user: User, free_token: str) -> AsyncGenerator[AsyncC
         yield session
 
     from quantflow.api.auth.dependencies import get_db
+
     app.dependency_overrides[get_db] = override_db
 
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         client.headers["Authorization"] = f"Bearer {free_token}"
         yield client
 
@@ -120,7 +121,9 @@ async def free_client(free_user: User, free_token: str) -> AsyncGenerator[AsyncC
 
 
 @pytest_asyncio.fixture
-async def premium_client(premium_user: User, premium_token: str) -> AsyncGenerator[AsyncClient, None]:
+async def premium_client(
+    premium_user: User, premium_token: str
+) -> AsyncGenerator[AsyncClient, None]:
     """AsyncClient with premium-tier user authentication."""
     session = _mock_db_session(premium_user)
 
@@ -128,11 +131,10 @@ async def premium_client(premium_user: User, premium_token: str) -> AsyncGenerat
         yield session
 
     from quantflow.api.auth.dependencies import get_db
+
     app.dependency_overrides[get_db] = override_db
 
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         client.headers["Authorization"] = f"Bearer {premium_token}"
         yield client
 
@@ -142,9 +144,7 @@ async def premium_client(premium_user: User, premium_token: str) -> AsyncGenerat
 @pytest_asyncio.fixture
 async def anon_client() -> AsyncGenerator[AsyncClient, None]:
     """Unauthenticated AsyncClient."""
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         yield client
 
 
@@ -190,13 +190,15 @@ class TestAuthEndpoints:
             def _set_fields(obj: object) -> None:
                 if isinstance(obj, User):
                     obj.id = 99  # type: ignore[attr-defined]
-                    obj.created_at = datetime(2025, 1, 1, tzinfo=timezone.utc)  # type: ignore[attr-defined]
+                    obj.created_at = datetime(2025, 1, 1, tzinfo=UTC)  # type: ignore[attr-defined]
                     obj.is_verified = False  # type: ignore[attr-defined]
+
             session.add = MagicMock(side_effect=_set_fields)
             session.flush = AsyncMock()
             yield session
 
         from quantflow.api.auth.dependencies import get_db
+
         app.dependency_overrides[get_db] = override_db
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -217,6 +219,7 @@ class TestAuthEndpoints:
             yield session
 
         from quantflow.api.auth.dependencies import get_db
+
         app.dependency_overrides[get_db] = override_db
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -290,7 +293,7 @@ class TestSignalEndpoints:
         mock_rec.confidence = 0.72
         mock_rec.position_size = 0.14
         mock_rec.regime = {"overall_regime": "BULL_LOW_VOL"}
-        mock_rec.time = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        mock_rec.time = datetime(2026, 1, 1, tzinfo=UTC)
         mock_rec.risk_warnings = []
 
         # The auth dependency calls db.execute() first (to find the user),
@@ -312,6 +315,7 @@ class TestSignalEndpoints:
             yield session
 
         from quantflow.api.auth.dependencies import get_db
+
         app.dependency_overrides[get_db] = override_db
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -412,9 +416,10 @@ class TestPortfolioEndpoints:
             },
             index=idx,
         )
-        close_df = pd.DataFrame({"Close": prices}, columns=pd.MultiIndex.from_tuples(
-            [("Close", "AAPL"), ("Close", "MSFT")]
-        ))
+        pd.DataFrame(
+            {"Close": prices},
+            columns=pd.MultiIndex.from_tuples([("Close", "AAPL"), ("Close", "MSFT")]),
+        )
 
         # Build a properly structured multi-index DataFrame
         mi_data = pd.DataFrame(
@@ -482,6 +487,7 @@ class TestIntelligenceEndpoints:
             yield session
 
         from quantflow.api.auth.dependencies import get_db
+
         app.dependency_overrides[get_db] = override_db
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -555,18 +561,21 @@ class TestSubscriptionEndpoints:
             yield session
 
         from quantflow.api.auth.dependencies import get_db
+
         app.dependency_overrides[get_db] = override_db
 
-        event_body = json.dumps({
-            "type": "customer.subscription.created",
-            "data": {
-                "object": {
-                    "id": "sub_test123",
-                    "customer": "cus_test123",
-                    "metadata": {"user_id": "1", "tier": "premium"},
-                }
-            },
-        })
+        event_body = json.dumps(
+            {
+                "type": "customer.subscription.created",
+                "data": {
+                    "object": {
+                        "id": "sub_test123",
+                        "customer": "cus_test123",
+                        "metadata": {"user_id": "1", "tier": "premium"},
+                    }
+                },
+            }
+        )
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.post(
                 "/api/v1/subscription/stripe/webhook",

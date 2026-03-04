@@ -12,10 +12,10 @@ Authentication: Bearer token passed as a ``token`` query parameter
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect, status
+from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 from jose import JWTError
 
 from quantflow.api.auth.jwt import decode_token
@@ -91,7 +91,7 @@ async def ws_signals(
     if auth is None:
         return
 
-    user_id, tier = auth
+    user_id, _tier = auth
     symbol = symbol.upper()
     channel = f"signals:{symbol}"
 
@@ -100,12 +100,15 @@ async def ws_signals(
 
     try:
         # Send initial welcome message
-        await manager.send_personal(websocket, {
-            "type": "connected",
-            "channel": channel,
-            "symbol": symbol,
-            "message": f"Subscribed to {symbol} signal stream.",
-        })
+        await manager.send_personal(
+            websocket,
+            {
+                "type": "connected",
+                "channel": channel,
+                "symbol": symbol,
+                "message": f"Subscribed to {symbol} signal stream.",
+            },
+        )
 
         # Keep alive loop: push updates and handle incoming messages
         push_task = asyncio.create_task(_push_signal_loop(websocket, symbol, channel))
@@ -113,11 +116,13 @@ async def ws_signals(
         try:
             while True:
                 # Wait for client messages (ping/unsubscribe) with timeout
-                data = await asyncio.wait_for(websocket.receive_json(), timeout=_SIGNAL_PUSH_INTERVAL)
+                data = await asyncio.wait_for(
+                    websocket.receive_json(), timeout=_SIGNAL_PUSH_INTERVAL
+                )
                 action = data.get("action", "")
                 if action == "ping":
                     await manager.send_personal(websocket, {"action": "pong"})
-        except asyncio.TimeoutError:
+        except TimeoutError:
             # No client message received — loop continues (push_task is still running)
             pass
         except WebSocketDisconnect:
@@ -169,7 +174,7 @@ def _build_signal_payload(symbol: str) -> dict[str, Any]:
     return {
         "type": "signal_update",
         "symbol": symbol,
-        "timestamp": datetime.now(tz=timezone.utc).isoformat(),
+        "timestamp": datetime.now(tz=UTC).isoformat(),
         "message": f"Signal refresh for {symbol}. Use REST endpoint for full data.",
     }
 
@@ -196,23 +201,26 @@ async def ws_market(
     if auth is None:
         return
 
-    user_id, tier = auth
+    user_id, _tier = auth
     channel = "market"
     await manager.connect(websocket, channel)
     logger.info("Market WS connected", user_id=user_id)
 
     try:
-        await manager.send_personal(websocket, {
-            "type": "connected",
-            "channel": channel,
-            "message": "Subscribed to market regime stream.",
-        })
+        await manager.send_personal(
+            websocket,
+            {
+                "type": "connected",
+                "channel": channel,
+                "message": "Subscribed to market regime stream.",
+            },
+        )
 
         while True:
             await asyncio.sleep(_MARKET_PUSH_INTERVAL)
             payload = {
                 "type": "market_update",
-                "timestamp": datetime.now(tz=timezone.utc).isoformat(),
+                "timestamp": datetime.now(tz=UTC).isoformat(),
                 "message": "Market regime refresh. See /api/v1/intelligence/macro for full report.",
             }
             await manager.send_personal(websocket, payload)
@@ -242,11 +250,14 @@ async def ws_portfolio(
     await manager.connect(websocket, channel)
 
     try:
-        await manager.send_personal(websocket, {
-            "type": "connected",
-            "channel": channel,
-            "message": "Portfolio streaming will be available in a future release.",
-        })
+        await manager.send_personal(
+            websocket,
+            {
+                "type": "connected",
+                "channel": channel,
+                "message": "Portfolio streaming will be available in a future release.",
+            },
+        )
         # Keep connection alive
         while True:
             await asyncio.sleep(30)

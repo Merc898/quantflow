@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import os
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
+from typing import TYPE_CHECKING
 
 from fastapi import FastAPI, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -38,6 +38,9 @@ from quantflow.api.routers.subscription import router as subscription_router
 from quantflow.api.websockets.router import router as ws_router
 from quantflow.config.logging import get_logger, setup_logging
 from quantflow.config.settings import settings
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
 
 setup_logging()
 logger = get_logger(__name__)

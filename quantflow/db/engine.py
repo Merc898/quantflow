@@ -135,14 +135,10 @@ async def _create_hypertables(conn: Any) -> None:
     )
 
     # Create hypertable for features
-    await conn.execute(
-        text("SELECT create_hypertable('features', 'time', if_not_exists => TRUE)")
-    )
+    await conn.execute(text("SELECT create_hypertable('features', 'time', if_not_exists => TRUE)"))
 
     # Create hypertable for signals
-    await conn.execute(
-        text("SELECT create_hypertable('signals', 'time', if_not_exists => TRUE)")
-    )
+    await conn.execute(text("SELECT create_hypertable('signals', 'time', if_not_exists => TRUE)"))
 
 
 async def close_db() -> None:

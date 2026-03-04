@@ -5,17 +5,18 @@ Revises: None
 Create Date: 2024-01-01 00:00:00.000000
 
 """
-from typing import Sequence, Union
 
-from alembic import op
+from collections.abc import Sequence
+
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = "001_initial"
-down_revision: Union[str, None] = None
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = None
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
@@ -162,9 +163,7 @@ def upgrade() -> None:
         sa.UniqueConstraint("date", "model_name", "symbol", name="uq_model_performance"),
     )
     op.create_index("ix_model_performance_date", "model_performance", ["date"])
-    op.create_index(
-        "ix_model_performance_model_date", "model_performance", ["model_name", "date"]
-    )
+    op.create_index("ix_model_performance_model_date", "model_performance", ["model_name", "date"])
 
     # Agent outputs table
     op.create_table(
@@ -187,15 +186,9 @@ def upgrade() -> None:
     op.create_index("ix_agent_outputs_symbol_time", "agent_outputs", ["symbol", "time"])
 
     # Create TimescaleDB hypertables
-    op.execute(
-        "SELECT create_hypertable('market_data', 'time', if_not_exists => TRUE)"
-    )
-    op.execute(
-        "SELECT create_hypertable('features', 'time', if_not_exists => TRUE)"
-    )
-    op.execute(
-        "SELECT create_hypertable('signals', 'time', if_not_exists => TRUE)"
-    )
+    op.execute("SELECT create_hypertable('market_data', 'time', if_not_exists => TRUE)")
+    op.execute("SELECT create_hypertable('features', 'time', if_not_exists => TRUE)")
+    op.execute("SELECT create_hypertable('signals', 'time', if_not_exists => TRUE)")
 
 
 def downgrade() -> None:

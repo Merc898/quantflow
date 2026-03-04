@@ -13,11 +13,10 @@ through) and logs a warning — never block the API due to a Redis outage.
 from __future__ import annotations
 
 import time
-from datetime import datetime, timezone
-from typing import Awaitable, Callable
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 import redis.asyncio as aioredis
-from fastapi import Request, Response
 from fastapi.responses import JSONResponse
 from jose import JWTError
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -30,6 +29,11 @@ from quantflow.config.constants import (
 )
 from quantflow.config.logging import get_logger
 from quantflow.config.settings import settings
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
+    from fastapi import Request, Response
 
 logger = get_logger(__name__)
 
@@ -44,7 +48,7 @@ _EXCLUDED_PATHS = {"/health", "/api/docs", "/api/redoc", "/openapi.json"}
 
 
 def _get_redis_key(identifier: str) -> str:
-    today = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d")
+    today = datetime.now(tz=UTC).strftime("%Y-%m-%d")
     return f"rate_limit:{identifier}:{today}"
 
 

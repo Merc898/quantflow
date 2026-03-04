@@ -7,10 +7,10 @@ for a given symbol.  All I/O is async.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 import numpy as np
-import pandas as pd
 from pydantic import BaseModel
 
 from quantflow.config.constants import MAX_MISSING_DATA_PCT
@@ -22,6 +22,9 @@ from quantflow.data.fetchers.base import (
     FundamentalsData,
 )
 from quantflow.data.fetchers.yfinance_fetcher import YFinanceFetcher
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 logger = get_logger(__name__)
 
@@ -150,7 +153,7 @@ async def run_pipeline(
         DataFetchError: If the primary data fetch fails.
         DataQualityError: If cleaned data still fails quality checks.
     """
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
 
     if config is None:
         config = PipelineConfig(

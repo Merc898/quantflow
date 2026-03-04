@@ -11,8 +11,7 @@ Implements the backtesting framework specified in Spec 09:
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from datetime import date, datetime, timezone
-from typing import Any
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
@@ -21,6 +20,9 @@ from scipy import stats
 
 from quantflow.config.logging import get_logger
 from quantflow.portfolio.hrp import HRPOptimizer
+
+if TYPE_CHECKING:
+    from datetime import date
 
 logger = get_logger(__name__)
 
@@ -350,7 +352,7 @@ class QuantFlowStrategy(BaseStrategy):
         """
         min_rows = self._mom_lookback + self._mom_skip + self._rev_slow + 5
         if len(prices) < min_rows:
-            return {sym: 0.0 for sym in prices.columns}
+            return dict.fromkeys(prices.columns, 0.0)
 
         raw_signals: dict[str, float] = {}
         for sym in prices.columns:
@@ -380,15 +382,15 @@ class QuantFlowStrategy(BaseStrategy):
         mom = float(np.clip((p_skip / p_base - 1.0) / 0.30, -1.0, 1.0))
 
         # Short-term mean-reversion (fast > slow → overbought → negative)
-        fast_ma = float(close.iloc[-self._rev_fast:].mean())
-        slow_ma = float(close.iloc[-self._rev_slow:].mean())
+        fast_ma = float(close.iloc[-self._rev_fast :].mean())
+        slow_ma = float(close.iloc[-self._rev_slow :].mean())
         if slow_ma < 1e-8:
             rev = 0.0
         else:
             rev = float(np.clip(-(fast_ma / slow_ma - 1.0) / 0.05, -1.0, 1.0))
 
         # Low-vol signal: realised < 20% target → positive
-        vol_returns = close.pct_change().dropna().iloc[-self._vol_window:]
+        vol_returns = close.pct_change().dropna().iloc[-self._vol_window :]
         realized_vol = float(vol_returns.std() * np.sqrt(252)) if len(vol_returns) > 5 else 0.20
         vol_sig = float(np.clip((0.20 - realized_vol) / 0.20, -1.0, 1.0))
 
@@ -415,7 +417,7 @@ class QuantFlowStrategy(BaseStrategy):
         long_syms = [s for s, v in signals.items() if v > 0.0 and s in returns.columns]
         if len(long_syms) < 2:
             n = len(signals)
-            return {s: 1.0 / n for s in signals} if n > 0 else {}
+            return dict.fromkeys(signals, 1.0 / n) if n > 0 else {}
 
         try:
             ret_sub = returns[long_syms].dropna(how="all")
@@ -449,7 +451,7 @@ class QuantFlowStrategy(BaseStrategy):
             return signals
         std = float(vals.std())
         if std < 1e-8:
-            return {k: 0.0 for k in keys}
+            return dict.fromkeys(keys, 0.0)
         z = (vals - vals.mean()) / std
         z_clipped = np.tanh(z * 0.5)
         return {k: float(z_clipped[i]) for i, k in enumerate(keys)}
@@ -603,7 +605,9 @@ def compute_performance_metrics(
         excess = aligned["p"] - aligned["b"]
         te = float(excess.std() * np.sqrt(252))
         tracking_error = te
-        info_ratio = float(excess.mean() / excess.std() * np.sqrt(252)) if excess.std() > 1e-8 else 0.0
+        info_ratio = (
+            float(excess.mean() / excess.std() * np.sqrt(252)) if excess.std() > 1e-8 else 0.0
+        )
         try:
             slope, intercept, *_ = stats.linregress(aligned["b"].values, aligned["p"].values)
             beta = float(slope)
@@ -620,9 +624,7 @@ def compute_performance_metrics(
 
     # --- Costs ---
     total_cost_usd = sum(t.total_cost for t in trades)
-    total_costs_bps = (
-        total_cost_usd / (initial_capital * max(n_years, 0.01)) * 10_000.0
-    )
+    total_costs_bps = total_cost_usd / (initial_capital * max(n_years, 0.01)) * 10_000.0
 
     # --- Annual turnover ---
     bought = sum(t.trade_value for t in trades if t.side == "BUY")
@@ -725,9 +727,7 @@ class BacktestEngine:
         start_ts = pd.Timestamp(self.config.start_date)
         end_ts = pd.Timestamp(self.config.end_date)
 
-        trading_dates = prices.index[
-            (prices.index >= start_ts) & (prices.index <= end_ts)
-        ]
+        trading_dates = prices.index[(prices.index >= start_ts) & (prices.index <= end_ts)]
         if len(trading_dates) < 63:
             raise ValueError(
                 f"Only {len(trading_dates)} trading days in "
@@ -866,7 +866,9 @@ class BacktestEngine:
             equity_curve=[float(v) for v in eq_s.values],
             equity_dates=[str(d.date()) for d in eq_s.index],
             benchmark_curve=[float(v) for v in bench_curve.values] if len(bench_curve) > 0 else [],
-            benchmark_dates=[str(d.date()) for d in bench_curve.index] if len(bench_curve) > 0 else [],
+            benchmark_dates=(
+                [str(d.date()) for d in bench_curve.index] if len(bench_curve) > 0 else []
+            ),
             gross_equity_curve=[float(v) for v in gq_s.values],
             daily_returns=[float(v) for v in net_daily.values],
             trades=all_trades,
@@ -1059,18 +1061,15 @@ class BacktestEngine:
         for name, (s_str, e_str) in _STRESS_PERIODS.items():
             s_ts = pd.Timestamp(s_str)
             e_ts = pd.Timestamp(e_str)
-            period_net = net_returns.loc[
-                (net_returns.index >= s_ts) & (net_returns.index <= e_ts)
-            ]
+            period_net = net_returns.loc[(net_returns.index >= s_ts) & (net_returns.index <= e_ts)]
             if len(period_net) < 5:
                 continue
             period_bench = benchmark_returns.reindex(period_net.index).fillna(0.0)
             period_trades = [tr for tr in trades if s_ts.date() <= tr.date <= e_ts.date()]
             period_ic = [v for d, v in ic_records if s_ts <= d <= e_ts]
             n_years = (
-                (min(e_ts, net_returns.index[-1]) - max(s_ts, net_returns.index[0])).days
-                / 365.25
-            )
+                min(e_ts, net_returns.index[-1]) - max(s_ts, net_returns.index[0])
+            ).days / 365.25
             results[name] = compute_performance_metrics(
                 net_returns=period_net,
                 gross_returns=period_net,

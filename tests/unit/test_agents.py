@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import json
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -44,7 +44,7 @@ def sample_agent_output() -> AgentOutput:
     return AgentOutput(
         agent_name="OpenAIAgent",
         symbol="AAPL",
-        timestamp=datetime.now(tz=timezone.utc),
+        timestamp=datetime.now(tz=UTC),
         sentiment_score=0.4,
         confidence=0.75,
         bullish_factors=["strong earnings", "guidance raised"],
@@ -57,7 +57,7 @@ def sample_agent_output() -> AgentOutput:
 @pytest.fixture()
 def sample_agent_outputs() -> list[AgentOutput]:
     """Three AgentOutputs for multi-agent tests."""
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     return [
         AgentOutput(
             agent_name="PerplexityAgent",
@@ -92,7 +92,7 @@ def sample_agent_outputs() -> list[AgentOutput]:
 @pytest.fixture()
 def sample_raw_docs() -> list[RawDocument]:
     """Three RawDocuments for scraper / sentiment tests."""
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     return [
         RawDocument(
             source="Yahoo Finance",
@@ -159,7 +159,9 @@ class TestBaseLLMClient:
         expected = {"choices": [{"message": {"content": '{"score": 0.1, "confidence": 0.5}'}}]}
         agent._call_api = AsyncMock(return_value=expected)
 
-        result = await agent.call_with_retry({"model": "gpt-4o"}, "https://api.openai.com/v1/chat/completions")
+        result = await agent.call_with_retry(
+            {"model": "gpt-4o"}, "https://api.openai.com/v1/chat/completions"
+        )
         assert result == expected
         agent._call_api.assert_called_once()
 
@@ -221,16 +223,16 @@ class TestOpenAIAgent:
     @pytest.mark.asyncio()
     async def test_extract_sentiment(self) -> None:
         agent = self._make_agent()
-        sentiment_json = json.dumps({
-            "score": 0.6,
-            "confidence": 0.82,
-            "reasoning": "Strong earnings beat",
-            "bullish_factors": ["revenue beat", "margin expansion"],
-            "bearish_factors": ["high capex"],
-        })
-        agent.call_with_retry = AsyncMock(
-            return_value=self._openai_response(sentiment_json)
+        sentiment_json = json.dumps(
+            {
+                "score": 0.6,
+                "confidence": 0.82,
+                "reasoning": "Strong earnings beat",
+                "bullish_factors": ["revenue beat", "margin expansion"],
+                "bearish_factors": ["high capex"],
+            }
         )
+        agent.call_with_retry = AsyncMock(return_value=self._openai_response(sentiment_json))
 
         result = await agent.extract_sentiment("Apple crushed earnings.", "AAPL")
 
@@ -241,16 +243,16 @@ class TestOpenAIAgent:
     @pytest.mark.asyncio()
     async def test_classify_event(self) -> None:
         agent = self._make_agent()
-        event_json = json.dumps({
-            "event_type": "earnings_beat",
-            "sentiment_impact": 0.7,
-            "magnitude": 0.8,
-            "confidence": 0.9,
-            "description": "Company beat EPS by 15%",
-        })
-        agent.call_with_retry = AsyncMock(
-            return_value=self._openai_response(event_json)
+        event_json = json.dumps(
+            {
+                "event_type": "earnings_beat",
+                "sentiment_impact": 0.7,
+                "magnitude": 0.8,
+                "confidence": 0.9,
+                "description": "Company beat EPS by 15%",
+            }
         )
+        agent.call_with_retry = AsyncMock(return_value=self._openai_response(event_json))
 
         result = await agent.classify_event("AAPL beats EPS by 15%.")
 
@@ -260,18 +262,18 @@ class TestOpenAIAgent:
     @pytest.mark.asyncio()
     async def test_analyze_earnings(self) -> None:
         agent = self._make_agent()
-        earnings_json = json.dumps({
-            "eps_surprise_pct": 8.5,
-            "revenue_surprise_pct": 3.2,
-            "guidance_tone": "raised",
-            "management_tone_score": 0.6,
-            "key_risks": ["fx headwinds"],
-            "key_positives": ["services growth"],
-            "forward_looking_statements": ["expect double-digit growth"],
-        })
-        agent.call_with_retry = AsyncMock(
-            return_value=self._openai_response(earnings_json)
+        earnings_json = json.dumps(
+            {
+                "eps_surprise_pct": 8.5,
+                "revenue_surprise_pct": 3.2,
+                "guidance_tone": "raised",
+                "management_tone_score": 0.6,
+                "key_risks": ["fx headwinds"],
+                "key_positives": ["services growth"],
+                "forward_looking_statements": ["expect double-digit growth"],
+            }
         )
+        agent.call_with_retry = AsyncMock(return_value=self._openai_response(earnings_json))
 
         result = await agent.analyze_earnings("Q3 earnings call transcript...")
 
@@ -281,16 +283,16 @@ class TestOpenAIAgent:
     @pytest.mark.asyncio()
     async def test_build_agent_output(self) -> None:
         agent = self._make_agent()
-        sentiment_json = json.dumps({
-            "score": 0.45,
-            "confidence": 0.75,
-            "reasoning": "Generally positive tone",
-            "bullish_factors": ["growth"],
-            "bearish_factors": [],
-        })
-        agent.call_with_retry = AsyncMock(
-            return_value=self._openai_response(sentiment_json)
+        sentiment_json = json.dumps(
+            {
+                "score": 0.45,
+                "confidence": 0.75,
+                "reasoning": "Generally positive tone",
+                "bullish_factors": ["growth"],
+                "bearish_factors": [],
+            }
         )
+        agent.call_with_retry = AsyncMock(return_value=self._openai_response(sentiment_json))
 
         output = await agent.build_agent_output(
             "Apple reports Q3 earnings.", "AAPL", sources=["https://example.com"]
@@ -333,9 +335,7 @@ class TestPerplexityAgent:
     async def test_query_returns_response(self) -> None:
         agent = self._make_agent()
         agent.call_with_retry = AsyncMock(
-            return_value=self._perplexity_response(
-                "AAPL received two analyst upgrades this week."
-            )
+            return_value=self._perplexity_response("AAPL received two analyst upgrades this week.")
         )
 
         result = await agent.query("Latest analyst upgrades for AAPL?", symbol="AAPL")
@@ -538,7 +538,7 @@ class TestWebScraperAgent:
     async def test_scrape_all_deduplicates(self) -> None:
         """scrape_all should deduplicate documents by URL."""
         agent = self._make_agent()
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=UTC)
         # Return same doc from two different scrapers
         doc1 = RawDocument(
             source="Yahoo Finance",
@@ -571,7 +571,7 @@ class TestWebScraperAgent:
     async def test_scrape_all_handles_individual_failures(self) -> None:
         """scrape_all should return docs from successful scrapers even if others fail."""
         agent = self._make_agent()
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=UTC)
         good_doc = RawDocument(
             source="StockTwits",
             url="https://stocktwits.com/1",
@@ -606,7 +606,11 @@ class TestSentimentAggregator:
         assert isinstance(result, AggregatedSentiment)
         assert -1.0 <= result.composite_sentiment <= 1.0
         assert result.sentiment_regime in {
-            "EXTREME_BEAR", "BEAR", "NEUTRAL", "BULL", "EXTREME_BULL"
+            "EXTREME_BEAR",
+            "BEAR",
+            "NEUTRAL",
+            "BULL",
+            "EXTREME_BULL",
         }
         assert "agent_llm" in result.source_scores
 
@@ -635,7 +639,9 @@ class TestSentimentAggregator:
             "quantflow.agents.sentiment.SentimentIntensityAnalyzer",
             create=True,
         ):
-            from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer  # type: ignore[import]
+            from vaderSentiment.vaderSentiment import (
+                SentimentIntensityAnalyzer,  # type: ignore[import]
+            )
 
             with patch.object(
                 SentimentIntensityAnalyzer,
@@ -647,7 +653,9 @@ class TestSentimentAggregator:
 
     def test_vader_sentiment_import_missing_returns_zero(self) -> None:
         """If vaderSentiment is not installed, returns 0.0 gracefully."""
-        with patch.dict("sys.modules", {"vaderSentiment": None, "vaderSentiment.vaderSentiment": None}):
+        with patch.dict(
+            "sys.modules", {"vaderSentiment": None, "vaderSentiment.vaderSentiment": None}
+        ):
             score = vader_sentiment("Some text")
             assert score == pytest.approx(0.0)
 
@@ -671,9 +679,7 @@ class TestSentimentAggregator:
         regime = SentimentAggregator._classify_regime(0.01, z_score=0.1)
         assert regime == "NEUTRAL"
 
-    def test_contrarian_flag_at_extreme(
-        self, sample_agent_outputs: list[AgentOutput]
-    ) -> None:
+    def test_contrarian_flag_at_extreme(self, sample_agent_outputs: list[AgentOutput]) -> None:
         agg = SentimentAggregator(use_finbert=False)
         # Populate enough history to generate z-scores
         for score in [0.1, 0.1, 0.1, 0.1, 0.1, 0.1]:
@@ -689,13 +695,10 @@ class TestSentimentAggregator:
         from datetime import timedelta
 
         agg = SentimentAggregator(use_finbert=False)
-        old_time = datetime.now(tz=timezone.utc) - timedelta(days=35)
+        old_time = datetime.now(tz=UTC) - timedelta(days=35)
         agg._history.append((old_time, 0.5))
         agg._update_history(0.3)
-        assert all(
-            t > datetime.now(tz=timezone.utc) - timedelta(days=31)
-            for t, _ in agg._history
-        )
+        assert all(t > datetime.now(tz=UTC) - timedelta(days=31) for t, _ in agg._history)
 
     def test_momentum_computed_correctly(self) -> None:
         agg = SentimentAggregator(use_finbert=False)
@@ -711,14 +714,16 @@ class TestSentimentAggregator:
         """FinBERT falls back to VADER when transformers is not available."""
         from quantflow.agents.sentiment import finbert_sentiment
 
-        with patch(
-            "quantflow.agents.sentiment.vader_batch",
-            return_value=0.25,
-        ) as mock_vader:
-            with patch.dict("sys.modules", {"transformers": None}):
-                score = finbert_sentiment(["Apple stock is doing great"])
-                # Should fall back to vader_batch
-                mock_vader.assert_called_once()
+        with (
+            patch(
+                "quantflow.agents.sentiment.vader_batch",
+                return_value=0.25,
+            ) as mock_vader,
+            patch.dict("sys.modules", {"transformers": None}),
+        ):
+            finbert_sentiment(["Apple stock is doing great"])
+            # Should fall back to vader_batch
+            mock_vader.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
@@ -753,7 +758,7 @@ class TestCEOValidatorModel:
     @pytest.mark.asyncio()
     async def test_validate_detects_conflict(self) -> None:
         """Agents with highly divergent sentiments should trigger conflict flag."""
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=UTC)
         outputs = [
             AgentOutput(
                 agent_name="OpenAIAgent",
@@ -841,7 +846,7 @@ class TestCEOValidatorModel:
     def test_statistical_consensus_weighted_average(self) -> None:
         """Weighted average should lie between min and max agent sentiments."""
         ceo = CEOValidatorModel()
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=UTC)
         outputs = [
             AgentOutput(
                 agent_name="PerplexityAgent",
@@ -863,9 +868,7 @@ class TestCEOValidatorModel:
         assert 0.2 <= result["validated_sentiment"] <= 0.6
         assert not result["conflict_detected"]
 
-    def test_normalised_weights_sum_to_one(
-        self, sample_agent_outputs: list[AgentOutput]
-    ) -> None:
+    def test_normalised_weights_sum_to_one(self, sample_agent_outputs: list[AgentOutput]) -> None:
         ceo = CEOValidatorModel()
         weights = ceo._normalised_weights(sample_agent_outputs)
 
@@ -873,7 +876,7 @@ class TestCEOValidatorModel:
 
     def test_narrative_includes_direction(self) -> None:
         ceo = CEOValidatorModel()
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=UTC)
         outputs = [
             AgentOutput(
                 agent_name="OpenAIAgent",
@@ -899,7 +902,6 @@ class TestAgentOrchestrator:
 
     def _make_orchestrator(self) -> AgentOrchestrator:
         """Return an orchestrator with all agents replaced by AsyncMocks."""
-        from quantflow.agents.ceo_model import CEOValidatorModel
 
         orc = AgentOrchestrator(cycle_timeout_s=30.0)
         return orc
@@ -907,7 +909,7 @@ class TestAgentOrchestrator:
     def _make_mock_report(self, symbol: str = "AAPL") -> ValidatedIntelligenceReport:
         return ValidatedIntelligenceReport(
             symbol=symbol,
-            timestamp=datetime.now(tz=timezone.utc),
+            timestamp=datetime.now(tz=UTC),
             validated_sentiment=0.35,
             consensus_confidence=0.70,
             conflict_detected=False,
@@ -929,7 +931,7 @@ class TestAgentOrchestrator:
     @pytest.mark.asyncio()
     async def test_run_intelligence_cycle_with_mock_agents(self) -> None:
         """Full cycle with mocked perplexity + CEO validator."""
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=UTC)
         perp_output = AgentOutput(
             agent_name="PerplexityAgent",
             symbol="MSFT",
@@ -961,7 +963,7 @@ class TestAgentOrchestrator:
     @pytest.mark.asyncio()
     async def test_run_intelligence_cycle_with_scraper(self) -> None:
         """Scraper results are passed through to LLM agents and sentiment."""
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=UTC)
         doc = RawDocument(
             source="Yahoo Finance",
             url="https://finance.yahoo.com/test",
@@ -987,7 +989,7 @@ class TestAgentOrchestrator:
     @pytest.mark.asyncio()
     async def test_agent_failure_does_not_block_cycle(self) -> None:
         """If one agent fails, the cycle still completes with remaining agents."""
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=UTC)
         good_output = AgentOutput(
             agent_name="PerplexityAgent",
             symbol="GOOGL",
@@ -1069,7 +1071,7 @@ class TestAgentOrchestrator:
     @pytest.mark.asyncio()
     async def test_synthetic_scraper_output_when_no_llm_agents(self) -> None:
         """Without LLM agents, a synthetic WebScraperAgent output is created."""
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=UTC)
         doc = RawDocument(
             source="Yahoo Finance",
             url="https://finance.yahoo.com/test2",
@@ -1118,7 +1120,7 @@ class TestAgentSchemas:
             AgentOutput(
                 agent_name="TestAgent",
                 symbol="AAPL",
-                timestamp=datetime.now(tz=timezone.utc),
+                timestamp=datetime.now(tz=UTC),
                 sentiment_score=1.5,  # Invalid
                 confidence=0.5,
             )
@@ -1129,7 +1131,7 @@ class TestAgentSchemas:
             AgentOutput(
                 agent_name="TestAgent",
                 symbol="AAPL",
-                timestamp=datetime.now(tz=timezone.utc),
+                timestamp=datetime.now(tz=UTC),
                 sentiment_score=0.5,
                 confidence=-0.1,  # Invalid
             )
@@ -1140,7 +1142,7 @@ class TestAgentSchemas:
             url="https://test.com",
             title="Test",
             text="Test text",
-            timestamp=datetime.now(tz=timezone.utc),
+            timestamp=datetime.now(tz=UTC),
             symbol="AAPL",
         )
         assert doc.relevance_score == pytest.approx(1.0)
@@ -1150,7 +1152,7 @@ class TestAgentSchemas:
     ) -> None:
         report = ValidatedIntelligenceReport(
             symbol="AAPL",
-            timestamp=datetime.now(tz=timezone.utc),
+            timestamp=datetime.now(tz=UTC),
             validated_sentiment=0.42,
             consensus_confidence=0.75,
             conflict_detected=False,

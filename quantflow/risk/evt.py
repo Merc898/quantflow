@@ -8,16 +8,20 @@ Also provides the Hill estimator as an alternative tail index estimator.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import numpy as np
-import pandas as pd
 import scipy.stats as stats
 from pydantic import BaseModel, Field
 
 from quantflow.config.logging import get_logger
 
+if TYPE_CHECKING:
+    import pandas as pd
+
 logger = get_logger(__name__)
 
-_MIN_EXCEEDANCES = 20   # GPD fit degrades below this
+_MIN_EXCEEDANCES = 20  # GPD fit degrades below this
 _DEFAULT_THRESHOLD_QUANTILE = 0.95
 
 

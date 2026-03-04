@@ -14,11 +14,14 @@ format compatible with Prometheus scraping.
 from __future__ import annotations
 
 import time
-from typing import Callable
+from typing import TYPE_CHECKING
 
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.routing import Match
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 try:
     from prometheus_client import (
@@ -89,7 +92,7 @@ def _get_route_path(request: Request) -> str:
     for route in request.app.routes:
         match, _ = route.matches(request.scope)
         if match == Match.FULL:
-            return route.path  # type: ignore[attr-defined]
+            return route.path
     # Truncate long unknown paths to avoid label cardinality explosion
     raw = request.url.path
     return raw if len(raw) <= 80 else raw[:80]

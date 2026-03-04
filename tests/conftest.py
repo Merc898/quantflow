@@ -1,11 +1,11 @@
 """Pytest configuration and fixtures."""
 
-import pytest
 import asyncio
-from typing import AsyncGenerator, Generator
+from collections.abc import Generator
 
-import pandas as pd
 import numpy as np
+import pandas as pd
+import pytest
 
 
 @pytest.fixture(scope="session")
@@ -36,13 +36,16 @@ def sample_ohlcv_data() -> pd.DataFrame:
     open_price = close * (1 + np.random.normal(0, 0.005, len(dates)))
     volume = np.random.randint(1_000_000, 10_000_000, len(dates))
 
-    df = pd.DataFrame({
-        "open": open_price,
-        "high": high,
-        "low": low,
-        "close": close,
-        "volume": volume,
-    }, index=dates)
+    df = pd.DataFrame(
+        {
+            "open": open_price,
+            "high": high,
+            "low": low,
+            "close": close,
+            "volume": volume,
+        },
+        index=dates,
+    )
 
     # Ensure OHLC consistency: high >= max(open, close), low <= min(open, close)
     df["high"] = df[["high", "open", "close"]].max(axis=1)

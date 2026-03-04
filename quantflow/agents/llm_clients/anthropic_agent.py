@@ -10,7 +10,7 @@ Responsibilities:
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -182,15 +182,17 @@ class AnthropicAgent(BaseLLMClient):
         """
         reports = []
         for ao in agent_outputs:
-            reports.append({
-                "agent": ao.agent_name,
-                "sentiment": ao.sentiment_score,
-                "confidence": ao.confidence,
-                "bullish": ao.bullish_factors[:4],
-                "bearish": ao.bearish_factors[:4],
-                "key_events": ao.key_events[:4],
-                "claims": [c.claim for c in ao.factual_claims[:5]],
-            })
+            reports.append(
+                {
+                    "agent": ao.agent_name,
+                    "sentiment": ao.sentiment_score,
+                    "confidence": ao.confidence,
+                    "bullish": ao.bullish_factors[:4],
+                    "bearish": ao.bearish_factors[:4],
+                    "key_events": ao.key_events[:4],
+                    "claims": [c.claim for c in ao.factual_claims[:5]],
+                }
+            )
 
         prompt = (
             "You are the CIO reviewing these analyst reports. "
@@ -239,7 +241,7 @@ class AnthropicAgent(BaseLLMClient):
         return AgentOutput(
             agent_name="AnthropicAgent",
             symbol=symbol,
-            timestamp=datetime.now(tz=timezone.utc),
+            timestamp=datetime.now(tz=UTC),
             sentiment_score=analysis.sentiment_score,
             confidence=0.70,
             bullish_factors=bullish,
@@ -282,9 +284,7 @@ class AnthropicAgent(BaseLLMClient):
             self._total_tokens_used += usage.get("input_tokens", 0) + usage.get("output_tokens", 0)
             return content
         except (KeyError, IndexError) as exc:
-            raise LLMClientError(
-                f"Unexpected Anthropic response: {response}"
-            ) from exc
+            raise LLMClientError(f"Unexpected Anthropic response: {response}") from exc
 
     async def _call_api(
         self,

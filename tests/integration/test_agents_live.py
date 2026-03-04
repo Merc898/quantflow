@@ -15,6 +15,7 @@ Required env vars (when LIVE_APIS=true):
 from __future__ import annotations
 
 import os
+from datetime import UTC
 
 import pytest
 
@@ -280,17 +281,17 @@ async def test_anthropic_build_agent_output_live() -> None:
 @pytest.mark.asyncio()
 async def test_ceo_validator_with_anthropic_live() -> None:
     """Full CEO validation pass using real Anthropic API."""
-    from datetime import datetime, timezone
+    from datetime import datetime
 
-    from quantflow.agents.llm_clients.anthropic_agent import AnthropicAgent
     from quantflow.agents.ceo_model import CEOValidatorModel
+    from quantflow.agents.llm_clients.anthropic_agent import AnthropicAgent
     from quantflow.agents.schemas import AgentOutput
 
     api_key = _require_key("ANTHROPIC_API_KEY")
     anthropic_agent = AnthropicAgent(api_key=api_key, timeout_s=60.0)
     ceo = CEOValidatorModel(anthropic_agent=anthropic_agent)
 
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     agent_outputs = [
         AgentOutput(
             agent_name="PerplexityAgent",
@@ -343,8 +344,8 @@ async def test_full_orchestrator_cycle_live() -> None:
     from quantflow.agents.llm_clients.openai_agent import OpenAIAgent
     from quantflow.agents.llm_clients.perplexity_agent import PerplexityAgent
     from quantflow.agents.orchestrator import AgentOrchestrator
-    from quantflow.agents.scrapers.web_scraper import WebScraperAgent
     from quantflow.agents.schemas import ValidatedIntelligenceReport
+    from quantflow.agents.scrapers.web_scraper import WebScraperAgent
 
     openai_key = os.environ.get("OPENAI_API_KEY")
     anthropic_key = os.environ.get("ANTHROPIC_API_KEY")

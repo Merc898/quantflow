@@ -9,25 +9,27 @@ with a 21-day gap between train end and val start.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
-import pandas as pd
 
 from quantflow.config.constants import WALK_FORWARD_GAP
 from quantflow.config.logging import get_logger
 from quantflow.models.base import BaseQuantModel, ModelOutput
 
+if TYPE_CHECKING:
+    import pandas as pd
+
 logger = get_logger(__name__)
 
-_SEQ_LEN = 63      # 63-day sliding window
-_HIDDEN = 128      # LSTM hidden units
-_N_LAYERS = 2      # stacked layers
+_SEQ_LEN = 63  # 63-day sliding window
+_HIDDEN = 128  # LSTM hidden units
+_N_LAYERS = 2  # stacked layers
 _DROPOUT = 0.3
 _BATCH_SIZE = 64
 _MAX_EPOCHS = 100
-_PATIENCE = 10     # early stopping patience
+_PATIENCE = 10  # early stopping patience
 _LR = 1e-3
 _WEIGHT_DECAY = 1e-4
 _GRAD_CLIP = 1.0
@@ -95,7 +97,6 @@ def _build_lstm_model(
     Returns:
         Initialised PyTorch nn.Module.
     """
-    import torch
     import torch.nn as nn
 
     class MultiTaskRNN(nn.Module):
@@ -118,7 +119,7 @@ def _build_lstm_model(
 
         def forward(self, x: Any) -> tuple[Any, Any]:
             out, _ = self.rnn(x)
-            last = out[:, -1, :]          # last time step
+            last = out[:, -1, :]  # last time step
             last = self.layer_norm(last)
             last = self.dropout(last)
             ret_pred = self.reg_head(last).squeeze(-1)
@@ -199,7 +200,7 @@ def _train_rnn(
             reg_loss = mse_loss(ret_pred, y_batch)
             dir_target = (y_batch > 0).float()
             cls_loss = bce_loss(dir_logit, dir_target)
-            loss = reg_loss + 0.3 * cls_loss   # multi-task loss
+            loss = reg_loss + 0.3 * cls_loss  # multi-task loss
             loss.backward()
             nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
             optimizer.step()
@@ -292,7 +293,7 @@ class LSTMSignalModel(BaseQuantModel):
     # Fit
     # ------------------------------------------------------------------
 
-    def fit(self, data: pd.DataFrame) -> "LSTMSignalModel":
+    def fit(self, data: pd.DataFrame) -> LSTMSignalModel:
         """Fit the LSTM on sequenced feature data.
 
         Temporal split: 70% train, 15% val (with 21-day gap), 15% test (unused).
@@ -303,7 +304,6 @@ class LSTMSignalModel(BaseQuantModel):
         Returns:
             Self (fitted model).
         """
-        import torch
         from sklearn.preprocessing import StandardScaler as SKScaler
 
         from quantflow.data.features import compute_all_features
@@ -365,7 +365,11 @@ class LSTMSignalModel(BaseQuantModel):
         )
 
         self._train_history = _train_rnn(
-            self._model, X_tr, y_tr, X_v, y_v,
+            self._model,
+            X_tr,
+            y_tr,
+            X_v,
+            y_v,
             max_epochs=_MAX_EPOCHS,
             patience=_PATIENCE,
         )
@@ -416,7 +420,7 @@ class LSTMSignalModel(BaseQuantModel):
         if len(X_raw) < self.seq_len:
             return self._neutral_output()
 
-        X_scaled = self._scaler_X.transform(X_raw[-self.seq_len:]).astype(np.float32)
+        X_scaled = self._scaler_X.transform(X_raw[-self.seq_len :]).astype(np.float32)
         tensor = torch.tensor(X_scaled[np.newaxis, :, :])  # (1, seq_len, F)
 
         self._model.eval()
@@ -433,7 +437,7 @@ class LSTMSignalModel(BaseQuantModel):
         signal = self.normalise_signal(raw_signal)
 
         # Blend regression signal with direction probability
-        direction_signal = (direction_prob - 0.5) * 2.0   # map [0,1] → [-1,1]
+        direction_signal = (direction_prob - 0.5) * 2.0  # map [0,1] → [-1,1]
         blended = 0.7 * signal + 0.3 * direction_signal
         blended = float(np.clip(blended, -1.0, 1.0))
 
@@ -442,7 +446,7 @@ class LSTMSignalModel(BaseQuantModel):
         return ModelOutput(
             model_name=self.model_name,
             symbol=self.symbol,
-            timestamp=datetime.now(tz=timezone.utc),
+            timestamp=datetime.now(tz=UTC),
             signal=blended,
             confidence=confidence,
             forecast_return=round(forecast_return, 6),
@@ -459,7 +463,7 @@ class LSTMSignalModel(BaseQuantModel):
         return ModelOutput(
             model_name=self.model_name,
             symbol=self.symbol,
-            timestamp=datetime.now(tz=timezone.utc),
+            timestamp=datetime.now(tz=UTC),
             signal=0.0,
             confidence=0.0,
             forecast_return=0.0,

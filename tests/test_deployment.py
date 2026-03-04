@@ -160,7 +160,7 @@ class TestKubernetesManifests:
 
     def test_ingress_has_tls(self) -> None:
         docs = self._load("ingress.yaml")
-        ingress = [d for d in docs if d.get("kind") == "Ingress"][0]
+        ingress = next(d for d in docs if d.get("kind") == "Ingress")
         assert "tls" in ingress["spec"]
 
     def test_hpa_yaml(self) -> None:
@@ -195,9 +195,7 @@ class TestPrometheusConfig:
         assert "alerting" in doc
 
     def test_prometheus_scrapes_api(self) -> None:
-        doc = yaml.safe_load(
-            (_ROOT / "docker" / "prometheus" / "prometheus.yml").read_text()
-        )
+        doc = yaml.safe_load((_ROOT / "docker" / "prometheus" / "prometheus.yml").read_text())
         job_names = [j["job_name"] for j in doc["scrape_configs"]]
         assert "quantflow_api" in job_names
 
@@ -208,9 +206,7 @@ class TestPrometheusConfig:
         assert "groups" in doc
 
     def test_alert_rules_has_critical_api_alert(self) -> None:
-        doc = yaml.safe_load(
-            (_ROOT / "docker" / "prometheus" / "alert_rules.yml").read_text()
-        )
+        doc = yaml.safe_load((_ROOT / "docker" / "prometheus" / "alert_rules.yml").read_text())
         all_alerts = []
         for group in doc["groups"]:
             all_alerts.extend(rule["alert"] for rule in group.get("rules", []))
@@ -225,14 +221,13 @@ class TestPrometheusConfig:
         assert "receivers" in doc
 
     def test_alertmanager_has_pagerduty_receiver(self) -> None:
-        doc = yaml.safe_load(
-            (_ROOT / "docker" / "alertmanager" / "alertmanager.yml").read_text()
-        )
+        doc = yaml.safe_load((_ROOT / "docker" / "alertmanager" / "alertmanager.yml").read_text())
         receiver_names = [r["name"] for r in doc["receivers"]]
         assert "pagerduty" in receiver_names
 
     def test_grafana_dashboard_valid_json(self) -> None:
         import json
+
         path = _ROOT / "docker" / "grafana" / "dashboards" / "quantflow.json"
         assert path.exists()
         dashboard = json.loads(path.read_text())
@@ -300,29 +295,34 @@ class TestPythonModules:
         reason="celery not installed",
     )
     def test_celery_app_imports(self) -> None:
-        from quantflow.api.celery_app import app  # noqa: F401
+        from quantflow.api.celery_app import app
+
         assert app is not None
         assert app.main == "quantflow"
 
     def test_main_app_imports_cleanly(self) -> None:
         # Should not raise even with no SENTRY_DSN
         os.environ.pop("SENTRY_DSN", None)
-        from quantflow.api.main import app  # noqa: F401
+        from quantflow.api.main import app
+
         assert app is not None
 
     def test_metrics_response_returns_response(self) -> None:
         from quantflow.api.middleware.metrics import metrics_response
+
         resp = metrics_response()
         assert resp is not None
         assert resp.status_code == 200
 
     def test_record_signal_no_error(self) -> None:
         from quantflow.api.middleware.metrics import record_signal_generated
+
         # Should not raise even if prometheus_client not installed
         record_signal_generated("AAPL", "BUY")
 
     def test_set_ws_connections_no_error(self) -> None:
         from quantflow.api.middleware.metrics import set_active_ws_connections
+
         set_active_ws_connections(42)
 
 
@@ -336,8 +336,10 @@ class TestFastAPIEndpoints:
 
     @pytest.fixture
     def client(self):
-        from httpx import AsyncClient, ASGITransport
+        from httpx import ASGITransport, AsyncClient
+
         from quantflow.api.main import app
+
         return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
 
     @pytest.mark.asyncio
@@ -388,4 +390,6 @@ class TestDocumentation:
 
     def test_docs_deployment_sections_exist(self) -> None:
         for fname in ["docker-compose.md", "kubernetes.md", "monitoring.md"]:
-            assert (_ROOT / "docs" / "deployment" / fname).exists(), f"Missing docs/deployment/{fname}"
+            assert (
+                _ROOT / "docs" / "deployment" / fname
+            ).exists(), f"Missing docs/deployment/{fname}"

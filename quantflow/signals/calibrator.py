@@ -9,7 +9,7 @@ per market regime, since different models dominate in different environments.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import numpy as np
 import pandas as pd
@@ -20,9 +20,9 @@ from quantflow.config.logging import get_logger
 
 logger = get_logger(__name__)
 
-_DEFAULT_FLOOR = 0.01   # Minimum weight — keep all models alive
-_DEFAULT_CAP = 0.30     # Maximum weight — no single model dominates
-_IC_HORIZON = 21        # Forward return horizon for IC computation (days)
+_DEFAULT_FLOOR = 0.01  # Minimum weight — keep all models alive
+_DEFAULT_CAP = 0.30  # Maximum weight — no single model dominates
+_IC_HORIZON = 21  # Forward return horizon for IC computation (days)
 
 
 class DynamicWeightCalibrator:
@@ -85,10 +85,7 @@ class DynamicWeightCalibrator:
         # Use cached regime weights if available
         if regime is not None and regime in self._regime_weights:
             # Filter to models present in current signal set
-            cached = {
-                m: w for m, w in self._regime_weights[regime].items()
-                if m in model_signals
-            }
+            cached = {m: w for m, w in self._regime_weights[regime].items() if m in model_signals}
             if cached:
                 return self._apply_floor_cap(cached)
 
@@ -112,7 +109,7 @@ class DynamicWeightCalibrator:
         if regime is not None:
             self._regime_weights[regime] = dict(weights)
 
-        self._last_calibrated = datetime.now(tz=timezone.utc)
+        self._last_calibrated = datetime.now(tz=UTC)
         self._logger.info(
             "Weights calibrated",
             n_models=len(weights),
@@ -152,9 +149,11 @@ class DynamicWeightCalibrator:
         icir_dict: dict[str, float] = {}
 
         for name, signal in model_signals.items():
-            aligned = pd.concat(
-                [signal.rename("sig"), fwd.rename("ret")], axis=1
-            ).dropna().iloc[-rolling_window:]
+            aligned = (
+                pd.concat([signal.rename("sig"), fwd.rename("ret")], axis=1)
+                .dropna()
+                .iloc[-rolling_window:]
+            )
 
             if len(aligned) < 10:
                 icir_dict[name] = 0.0
@@ -192,9 +191,11 @@ class DynamicWeightCalibrator:
         Returns:
             Spearman IC float in [-1, +1].  Returns 0.0 if insufficient data.
         """
-        aligned = pd.concat(
-            [signal.rename("sig"), fwd_returns.rename("ret")], axis=1
-        ).dropna().iloc[-self._lookback:]
+        aligned = (
+            pd.concat([signal.rename("sig"), fwd_returns.rename("ret")], axis=1)
+            .dropna()
+            .iloc[-self._lookback :]
+        )
 
         if len(aligned) < 10:
             return 0.0
@@ -220,7 +221,7 @@ class DynamicWeightCalibrator:
         if total < 1e-8:
             # All ICs non-positive → equal weights
             n = len(ic_scores)
-            raw = {m: 1.0 / n for m in ic_scores}
+            raw = dict.fromkeys(ic_scores, 1.0 / n)
         else:
             raw = {m: v / total for m, v in positive_ic.items()}
 

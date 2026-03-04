@@ -6,11 +6,10 @@ for cross-validation.  Each inherits BaseQuantModel and returns ModelOutput.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any, Literal
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
-import pandas as pd
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.linear_model import ElasticNet, Lasso, Ridge
 from sklearn.model_selection import TimeSeriesSplit
@@ -20,6 +19,9 @@ from quantflow.config.constants import WALK_FORWARD_GAP, WALK_FORWARD_N_SPLITS
 from quantflow.config.logging import get_logger
 from quantflow.models.base import BaseQuantModel, ModelOutput
 from quantflow.models.ml.gradient_boosting import _build_xy
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 logger = get_logger(__name__)
 
@@ -109,7 +111,7 @@ class RandomForestModel(BaseQuantModel):
         self._vol_estimate: float = 0.02
         self._ic_history: list[float] = []
 
-    def fit(self, data: pd.DataFrame) -> "RandomForestModel":
+    def fit(self, data: pd.DataFrame) -> RandomForestModel:
         """Fit the Random Forest on features derived from OHLCV data.
 
         Args:
@@ -177,12 +179,16 @@ class RandomForestModel(BaseQuantModel):
         return ModelOutput(
             model_name=self.model_name,
             symbol=self.symbol,
-            timestamp=datetime.now(tz=timezone.utc),
+            timestamp=datetime.now(tz=UTC),
             signal=signal,
             confidence=confidence,
             forecast_return=round(forecast_return, 6),
             forecast_std=round(max(forecast_std, 1e-6), 6),
-            metadata={"oob_score": round(float(self._model.oob_score_), 4), "feature_importance": feature_imp, "ic_mean": round(ic_mean, 4)},
+            metadata={
+                "oob_score": round(float(self._model.oob_score_), 4),
+                "feature_importance": feature_imp,
+                "ic_mean": round(ic_mean, 4),
+            },
         )
 
     def _last_feature_row(self, data: pd.DataFrame | None) -> np.ndarray | None:
@@ -205,7 +211,7 @@ class RandomForestModel(BaseQuantModel):
         return ModelOutput(
             model_name=self.model_name,
             symbol=self.symbol,
-            timestamp=datetime.now(tz=timezone.utc),
+            timestamp=datetime.now(tz=UTC),
             signal=0.0,
             confidence=0.0,
             forecast_return=0.0,
@@ -258,7 +264,7 @@ class LinearSignalModel(BaseQuantModel):
         self._alpha: float = 1e-3
         self._l1_ratio: float = 0.5
 
-    def fit(self, data: pd.DataFrame) -> "LinearSignalModel":
+    def fit(self, data: pd.DataFrame) -> LinearSignalModel:
         """Fit the regularised linear model with CV-selected alpha.
 
         Args:
@@ -310,7 +316,12 @@ class LinearSignalModel(BaseQuantModel):
                 if required.issubset(set(data.columns))
                 else data.drop(columns=["close"], errors="ignore")
             )
-            X_raw = features.replace([np.inf, -np.inf], np.nan).dropna().tail(1).values.astype(np.float64)
+            X_raw = (
+                features.replace([np.inf, -np.inf], np.nan)
+                .dropna()
+                .tail(1)
+                .values.astype(np.float64)
+            )
         else:
             n = len(self._model.coef_)
             X_raw = np.zeros((1, n))
@@ -332,7 +343,7 @@ class LinearSignalModel(BaseQuantModel):
         return ModelOutput(
             model_name=self.model_name,
             symbol=self.symbol,
-            timestamp=datetime.now(tz=timezone.utc),
+            timestamp=datetime.now(tz=UTC),
             signal=signal,
             confidence=confidence,
             forecast_return=round(forecast_return, 6),
@@ -347,7 +358,7 @@ class LinearSignalModel(BaseQuantModel):
 
     def _make_model(self, alpha: float, l1_ratio: float) -> Any:
         """Instantiate the sklearn estimator for the chosen model type."""
-        tscv = TimeSeriesSplit(n_splits=3, gap=WALK_FORWARD_GAP)
+        TimeSeriesSplit(n_splits=3, gap=WALK_FORWARD_GAP)
         if self.model_type == "lasso":
             return Lasso(alpha=alpha, max_iter=5000, random_state=42)
         elif self.model_type == "ridge":
@@ -355,9 +366,7 @@ class LinearSignalModel(BaseQuantModel):
         else:
             return ElasticNet(alpha=alpha, l1_ratio=l1_ratio, max_iter=5000, random_state=42)
 
-    def _select_alpha(
-        self, X: np.ndarray, y: np.ndarray
-    ) -> tuple[float, float]:
+    def _select_alpha(self, X: np.ndarray, y: np.ndarray) -> tuple[float, float]:
         """Grid-search alpha and l1_ratio via walk-forward CV."""
         from sklearn.model_selection import cross_val_score
 
@@ -388,7 +397,7 @@ class LinearSignalModel(BaseQuantModel):
         return ModelOutput(
             model_name=self.model_name,
             symbol=self.symbol,
-            timestamp=datetime.now(tz=timezone.utc),
+            timestamp=datetime.now(tz=UTC),
             signal=0.0,
             confidence=0.0,
             forecast_return=0.0,

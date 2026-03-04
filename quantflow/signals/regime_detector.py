@@ -13,11 +13,10 @@ recommendation engine, and weight calibrator.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Literal
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
-import pandas as pd
 from pydantic import BaseModel, Field
 
 from quantflow.config.constants import (
@@ -29,10 +28,13 @@ from quantflow.config.constants import (
 )
 from quantflow.config.logging import get_logger
 
+if TYPE_CHECKING:
+    import pandas as pd
+
 logger = get_logger(__name__)
 
-_TREND_SMA_WINDOW = 200     # Trading-day SMA for trend regime
-_SIDEWAYS_BAND = 0.02       # Price within ±2% of SMA → SIDEWAYS
+_TREND_SMA_WINDOW = 200  # Trading-day SMA for trend regime
+_SIDEWAYS_BAND = 0.02  # Price within ±2% of SMA → SIDEWAYS
 _VIX_CALM = 15.0
 _VIX_ELEVATED = 25.0
 _VIX_STRESS = 35.0
@@ -62,7 +64,7 @@ class RegimeState(BaseModel):
     overall_regime: str
     regime_confidence: float = Field(..., ge=0.0, le=1.0)
     regime_duration_days: int = Field(..., ge=0)
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(tz=timezone.utc))
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(tz=UTC))
 
 
 # ---------------------------------------------------------------------------
@@ -128,9 +130,7 @@ class RegimeDetector:
 
         # Override vol regime with Markov probs if available
         if markov_state_probs:
-            vol_regime, vol_conf = self._markov_override(
-                markov_state_probs, vol_regime, vol_conf
-            )
+            vol_regime, vol_conf = self._markov_override(markov_state_probs, vol_regime, vol_conf)
 
         overall = f"{trend_regime}_{vol_regime}_VOL"
         confidence = float(np.mean([vol_conf, trend_conf, macro_conf]))
@@ -150,8 +150,8 @@ class RegimeDetector:
 
         return RegimeState(
             volatility_regime=vol_regime,  # type: ignore[arg-type]
-            trend_regime=trend_regime,       # type: ignore[arg-type]
-            macro_regime=macro_regime,       # type: ignore[arg-type]
+            trend_regime=trend_regime,  # type: ignore[arg-type]
+            macro_regime=macro_regime,  # type: ignore[arg-type]
             overall_regime=overall,
             regime_confidence=round(confidence, 4),
             regime_duration_days=duration,
@@ -186,16 +186,9 @@ class RegimeDetector:
         realized_vol = float(recent_ret.std() * np.sqrt(TRADING_DAYS_PER_YEAR) * 100)
 
         # Historical vol distribution for percentile calculation
-        rolling_vol = (
-            returns.rolling(21).std() * np.sqrt(TRADING_DAYS_PER_YEAR) * 100
-        ).dropna()
+        rolling_vol = (returns.rolling(21).std() * np.sqrt(TRADING_DAYS_PER_YEAR) * 100).dropna()
 
-        if len(rolling_vol) < 5:
-            pct = 50.0
-        else:
-            pct = float(
-                (rolling_vol < realized_vol).mean() * 100
-            )
+        pct = 50.0 if len(rolling_vol) < 5 else float((rolling_vol < realized_vol).mean() * 100)
 
         if pct >= VOL_REGIME_EXTREME_THRESHOLD:
             regime, conf = "CRISIS", 0.85
@@ -215,7 +208,7 @@ class RegimeDetector:
             elif vix < _VIX_CALM and regime in ("HIGH", "CRISIS"):
                 regime, conf = "MEDIUM", 0.70
 
-        return regime, conf  # type: ignore[return-value]
+        return regime, conf
 
     def _trend_regime(
         self,
@@ -324,7 +317,8 @@ class RegimeDetector:
         """
         # Look for states labelled "high_vol" or "bear"
         high_vol_prob = sum(
-            p for name, p in markov_probs.items()
+            p
+            for name, p in markov_probs.items()
             if any(kw in name.lower() for kw in ("high", "bear", "crisis", "2"))
         )
         if high_vol_prob > 0.70 and vol_regime not in ("HIGH", "CRISIS"):
@@ -360,6 +354,6 @@ class RegimeDetector:
         Args:
             regime: Current overall regime label.
         """
-        self._regime_history.append((datetime.now(tz=timezone.utc), regime))
+        self._regime_history.append((datetime.now(tz=UTC), regime))
         # Keep last 252 entries
         self._regime_history = self._regime_history[-252:]

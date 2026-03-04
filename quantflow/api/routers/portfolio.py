@@ -13,7 +13,7 @@ import yfinance as yf
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
-from quantflow.api.auth.dependencies import CurrentUser, DbDep, require_tier
+from quantflow.api.auth.dependencies import CurrentUser, require_tier
 from quantflow.config.constants import TIER_PREMIUM
 from quantflow.config.logging import get_logger
 from quantflow.portfolio.hrp import HRPOptimizer
@@ -190,13 +190,10 @@ async def optimize_portfolio(
         opt_mvo = MVOOptimizer()
         result = opt_mvo.optimize(
             returns,
-            covariance_method=body.covariance_method,
+            covariance_method=body.covariance_method,  # type: ignore[arg-type]
         )
 
-    weights_list = [
-        WeightEntry(symbol=sym, weight=w)
-        for sym, w in result.weights.items()
-    ]
+    weights_list = [WeightEntry(symbol=sym, weight=w) for sym, w in result.weights.items()]
 
     return OptimizeResponse(
         method=method,
@@ -215,7 +212,7 @@ async def optimize_portfolio(
 async def efficient_frontier(
     symbols: str = Query(..., description="Comma-separated ticker symbols"),
     n_points: int = Query(default=30, ge=10, le=100),
-    user: CurrentUser = None,
+    user: CurrentUser | None = None,
 ) -> dict[str, Any]:
     """Compute the mean-variance efficient frontier.
 
@@ -234,7 +231,11 @@ async def efficient_frontier(
     result = opt.optimize(returns, compute_frontier=True)
 
     frontier_points = [
-        {"expected_return": p.expected_return, "expected_vol": p.expected_vol, "sharpe": p.sharpe_ratio}
+        {
+            "expected_return": p.expected_return,
+            "expected_vol": p.expected_vol,
+            "sharpe": p.sharpe_ratio,
+        }
         for p in result.efficient_frontier[:n_points]
     ]
 
@@ -288,8 +289,8 @@ async def stress_test(
             res = tester.run_historical_scenario(weights, returns, scenario)
             scenario_results[scenario] = {
                 "portfolio_return": res.portfolio_return,
-                "worst_asset": res.worst_asset,
                 "worst_asset_return": res.worst_asset_return,
+                "best_asset_return": res.best_asset_return,
                 "scenario": res.scenario_name,
             }
         except Exception as exc:
@@ -298,11 +299,11 @@ async def stress_test(
     # Monte Carlo
     mc = tester.run_monte_carlo_stress(returns, weights)
     mc_result = {
-        "var_95": mc.var_95,
-        "var_99": mc.var_99,
-        "expected_shortfall_95": mc.expected_shortfall_95,
-        "max_loss": mc.max_loss,
-        "n_paths": mc.n_paths,
+        "p5": mc.p5,
+        "p1": mc.p1,
+        "expected_shortfall_999": mc.expected_shortfall_999,
+        "mean": mc.mean,
+        "n_scenarios": mc.n_scenarios,
     }
 
     return StressTestResponse(scenarios=scenario_results, monte_carlo=mc_result)
@@ -316,7 +317,7 @@ async def risk_report(
     symbol: str = Query(..., description="Ticker symbol"),
     confidence: float = Query(default=0.99, ge=0.90, le=0.999),
     method: str = Query(default="historical", pattern="^(historical|parametric|monte_carlo)$"),
-    user: CurrentUser = None,
+    user: CurrentUser | None = None,
 ) -> RiskReportResponse:
     """Compute 1-day VaR and ES using three methods.
 
@@ -329,16 +330,13 @@ async def risk_report(
             detail=f"Insufficient data for '{symbol}'.",
         )
 
-    if isinstance(data.columns, pd.MultiIndex):
-        close = data["Close"].squeeze()
-    else:
-        close = data["Close"]
+    close = data["Close"].squeeze() if isinstance(data.columns, pd.MultiIndex) else data["Close"]
 
     returns = np.log(close / close.shift(1)).dropna()
 
     calc = RiskCalculator()
-    report_99 = calc.compute_var_es(returns, confidence=0.99, method=method)
-    report_95 = calc.compute_var_es(returns, confidence=0.95, method=method)
+    report_99 = calc.compute_var_es(returns, confidence=0.99, method=method)  # type: ignore[arg-type]
+    report_95 = calc.compute_var_es(returns, confidence=0.95, method=method)  # type: ignore[arg-type]
 
     return RiskReportResponse(
         symbol=symbol.upper(),

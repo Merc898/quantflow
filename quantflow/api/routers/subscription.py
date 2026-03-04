@@ -9,18 +9,18 @@ Handles:
 
 from __future__ import annotations
 
-import hmac
-import hashlib
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from fastapi import APIRouter, Header, HTTPException, Request, status
 from pydantic import BaseModel
 from sqlalchemy import select
 
-from quantflow.api.auth.dependencies import CurrentUser, DbDep
 from quantflow.config.logging import get_logger
 from quantflow.config.settings import settings
 from quantflow.db.models import User
+
+if TYPE_CHECKING:
+    from quantflow.api.auth.dependencies import CurrentUser, DbDep
 
 logger = get_logger(__name__)
 
@@ -222,7 +222,9 @@ async def stripe_webhook(
     webhook_secret = settings.stripe_webhook_secret
     if webhook_secret and stripe_signature and _STRIPE_AVAILABLE:
         try:
-            _stripe.api_key = (settings.stripe_secret_key or "").get_secret_value() if settings.stripe_secret_key else ""
+            _stripe.api_key = (
+                settings.stripe_secret_key.get_secret_value() if settings.stripe_secret_key else ""
+            )
             event = _stripe.Webhook.construct_event(
                 payload,
                 stripe_signature,
@@ -234,6 +236,7 @@ async def stripe_webhook(
     else:
         # In development: parse JSON without verification
         import json
+
         try:
             event = json.loads(payload)
         except Exception:
@@ -296,9 +299,7 @@ async def _handle_subscription_cancelled(data: dict[str, Any], db: DbDep) -> Non
         db: Database session.
     """
     subscription_id = data.get("id")
-    result = await db.execute(
-        select(User).where(User.stripe_subscription_id == subscription_id)
-    )
+    result = await db.execute(select(User).where(User.stripe_subscription_id == subscription_id))
     user = result.scalar_one_or_none()
     if user is None:
         logger.warning("Stripe webhook: no user for subscription", sub_id=subscription_id)

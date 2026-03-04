@@ -9,10 +9,9 @@ Implements:
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
-import pandas as pd
 from pydantic import BaseModel, Field
 
 from quantflow.config.constants import (
@@ -23,9 +22,12 @@ from quantflow.config.constants import (
 )
 from quantflow.config.logging import get_logger
 
+if TYPE_CHECKING:
+    import pandas as pd
+
 logger = get_logger(__name__)
 
-_MIN_OBSERVATIONS = 60   # Minimum rows for reliable covariance
+_MIN_OBSERVATIONS = 60  # Minimum rows for reliable covariance
 _N_FRONTIER_POINTS = 50
 
 
@@ -136,9 +138,7 @@ class MVOOptimizer:
             ValueError: If fewer than ``_MIN_OBSERVATIONS`` rows.
         """
         if len(returns) < _MIN_OBSERVATIONS:
-            raise ValueError(
-                f"Need at least {_MIN_OBSERVATIONS} observations, got {len(returns)}"
-            )
+            raise ValueError(f"Need at least {_MIN_OBSERVATIONS} observations, got {len(returns)}")
 
         assets = list(returns.columns)
         n = len(assets)
@@ -150,7 +150,10 @@ class MVOOptimizer:
 
         # --- Expected returns ---
         mu = self._estimate_returns(
-            data, returns, cov_annual, assets,
+            data,
+            returns,
+            cov_annual,
+            assets,
             method=return_method,
             signal_returns=signal_returns,
             market_returns=market_returns,
@@ -327,9 +330,7 @@ class MVOOptimizer:
                 self._logger.warning("CAPM method needs market_returns; falling back to sample")
                 return data.mean(axis=0) * TRADING_DAYS_PER_YEAR
 
-            aligned = returns_df.join(
-                market_returns.rename("_mkt"), how="inner"
-            ).dropna()
+            aligned = returns_df.join(market_returns.rename("_mkt"), how="inner").dropna()
             mkt = aligned["_mkt"].values
             mkt_var = float(np.var(mkt, ddof=1))
             if mkt_var < 1e-10:
@@ -382,9 +383,9 @@ class MVOOptimizer:
         n = len(mu)
         w = cp.Variable(n)
 
-        objective = cp.Maximize(mu @ w - (self._lam / 2) * cp.quad_form(w, cov))
+        objective = cp.Maximize(mu @ w - (self._lam / 2) * cp.quad_form(w, cov))  # type: ignore[attr-defined]
         constraints = [
-            cp.sum(w) == 1.0,
+            cp.sum(w) == 1.0,  # type: ignore[attr-defined]
             w >= self._min_w,
             w <= self._max_w,
         ]
@@ -437,9 +438,9 @@ class MVOOptimizer:
         frontier: list[EfficientFrontierPoint] = []
         for target in target_returns:
             w = cp.Variable(n)
-            obj = cp.Minimize(cp.quad_form(w, cov))
+            obj = cp.Minimize(cp.quad_form(w, cov))  # type: ignore[attr-defined]
             constraints = [
-                cp.sum(w) == 1.0,
+                cp.sum(w) == 1.0,  # type: ignore[attr-defined]
                 w >= self._min_w,
                 w <= self._max_w,
                 mu @ w >= target,

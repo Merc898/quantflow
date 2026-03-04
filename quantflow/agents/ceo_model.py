@@ -14,7 +14,7 @@ is unavailable.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import numpy as np
@@ -26,7 +26,6 @@ from quantflow.config.constants import (
     AGENT_WEIGHT_PERPLEXITY,
     AGENT_WEIGHT_SCRAPERS,
     CONSENSUS_HIGH_THRESHOLD,
-    CONSENSUS_LOW_THRESHOLD,
     CONSENSUS_MEDIUM_THRESHOLD,
 )
 from quantflow.config.logging import get_logger
@@ -88,7 +87,7 @@ class CEOValidatorModel:
             return self._empty_report()
 
         symbol = agent_outputs[0].symbol
-        timestamp = datetime.now(tz=timezone.utc)
+        timestamp = datetime.now(tz=UTC)
 
         # --- Statistical consensus (always computed) ---
         stat_result = self._statistical_consensus(agent_outputs)
@@ -105,21 +104,15 @@ class CEOValidatorModel:
         # --- LLM validation pass (if AnthropicAgent available) ---
         if self._anthropic is not None:
             try:
-                llm_result = await self._anthropic.ceo_validate(
-                    agent_outputs, market_data or {}
-                )
-                llm_sentiment = float(
-                    llm_result.get("validated_sentiment", validated_sentiment)
-                )
+                llm_result = await self._anthropic.ceo_validate(agent_outputs, market_data or {})
+                llm_sentiment = float(llm_result.get("validated_sentiment", validated_sentiment))
                 # CEO override: LLM disagrees with statistical consensus by > 0.3
                 if abs(llm_sentiment - validated_sentiment) > 0.30:
                     ceo_override = True
                     ceo_reasoning = llm_result.get("ceo_reasoning")
 
                 validated_sentiment = llm_sentiment
-                conflict_detected = bool(
-                    llm_result.get("conflict_detected", conflict_detected)
-                )
+                conflict_detected = bool(llm_result.get("conflict_detected", conflict_detected))
                 hallucinations = max(
                     hallucinations,
                     int(llm_result.get("hallucinations_flagged", 0)),
@@ -165,9 +158,7 @@ class CEOValidatorModel:
     # Private helpers
     # ------------------------------------------------------------------
 
-    def _statistical_consensus(
-        self, outputs: list[AgentOutput]
-    ) -> dict[str, Any]:
+    def _statistical_consensus(self, outputs: list[AgentOutput]) -> dict[str, Any]:
         """Compute weighted-average consensus from agent outputs.
 
         Args:
@@ -212,7 +203,9 @@ class CEOValidatorModel:
         consensus_confidence = base_conf * (0.75 if conflict_detected else 1.0)
 
         # Build simple narrative from top factors
-        direction = "positive" if validated > 0.05 else "negative" if validated < -0.05 else "neutral"
+        direction = (
+            "positive" if validated > 0.05 else "negative" if validated < -0.05 else "neutral"
+        )
         top_bull = list(dict.fromkeys(all_bullish))[:2]
         top_bear = list(dict.fromkeys(all_bearish))[:2]
         narrative = (
@@ -255,9 +248,7 @@ class CEOValidatorModel:
                     count += 1
         return count
 
-    def _normalised_weights(
-        self, outputs: list[AgentOutput]
-    ) -> dict[str, float]:
+    def _normalised_weights(self, outputs: list[AgentOutput]) -> dict[str, float]:
         """Return normalised per-agent weights used for this validation.
 
         Args:
@@ -277,7 +268,7 @@ class CEOValidatorModel:
         """Return a neutral empty report when no agent outputs are available."""
         return ValidatedIntelligenceReport(
             symbol="UNKNOWN",
-            timestamp=datetime.now(tz=timezone.utc),
+            timestamp=datetime.now(tz=UTC),
             validated_sentiment=0.0,
             consensus_confidence=0.0,
             conflict_detected=False,

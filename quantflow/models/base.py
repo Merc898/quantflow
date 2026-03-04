@@ -7,14 +7,16 @@ a ModelOutput Pydantic object that the signal fusion engine consumes.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
 from pydantic import BaseModel, Field, field_validator
 
 from quantflow.config.logging import get_logger
+
+if TYPE_CHECKING:
+    from datetime import datetime
 
 logger = get_logger(__name__)
 
@@ -104,7 +106,7 @@ class BaseQuantModel(ABC):
     # ------------------------------------------------------------------
 
     @abstractmethod
-    def fit(self, data: pd.DataFrame) -> "BaseQuantModel":
+    def fit(self, data: pd.DataFrame) -> BaseQuantModel:
         """Fit the model on historical data.
 
         Args:
@@ -193,9 +195,7 @@ class BaseQuantModel(ABC):
         n_nan = int(np.isnan(arr_np).sum())
         n_inf = int(np.isinf(arr_np).sum())
         if n_nan > 0 or n_inf > 0:
-            raise ValueError(
-                f"{name}: {n_nan} NaN and {n_inf} Inf values detected."
-            )
+            raise ValueError(f"{name}: {n_nan} NaN and {n_inf} Inf values detected.")
 
     def _require_fitted(self) -> None:
         """Raise ``RuntimeError`` if the model has not been fitted.

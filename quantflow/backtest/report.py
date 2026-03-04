@@ -15,15 +15,20 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from matplotlib.backends.backend_pdf import PdfPages
+from matplotlib.ticker import FuncFormatter
 
-from quantflow.backtest.engine import BacktestResult, PerformanceMetrics
 from quantflow.config.logging import get_logger
+
+if TYPE_CHECKING:
+    from matplotlib.figure import Figure
+
+    from quantflow.backtest.engine import BacktestResult, PerformanceMetrics
 
 logger = get_logger(__name__)
 
@@ -90,17 +95,29 @@ def _page_summary(pdf: PdfPages, result: BacktestResult, name: str) -> None:
     ax.axis("off")
 
     title = f"{name}\nBacktest Report"
-    ax.text(0.5, 0.92, title, transform=ax.transAxes,
-            ha="center", va="top", fontsize=18, fontweight="bold")
     ax.text(
-        0.5, 0.85,
+        0.5,
+        0.92,
+        title,
+        transform=ax.transAxes,
+        ha="center",
+        va="top",
+        fontsize=18,
+        fontweight="bold",
+    )
+    ax.text(
+        0.5,
+        0.85,
         f"{result.config.start_date}  →  {result.config.end_date}  "
         f"(${result.config.initial_capital:,.0f} initial capital)",
-        transform=ax.transAxes, ha="center", va="top", fontsize=11, color="#555",
+        transform=ax.transAxes,
+        ha="center",
+        va="top",
+        fontsize=11,
+        color="#555",
     )
 
     rows = _metric_rows(m)
-    col_labels = ["Metric", "Value"]
     n = len(rows)
     mid = (n + 1) // 2
     left_rows, right_rows = rows[:mid], rows[mid:]
@@ -111,10 +128,24 @@ def _page_summary(pdf: PdfPages, result: BacktestResult, name: str) -> None:
         y_start = 0.78
         step = 0.045
 
-        ax.text(x_label, y_start + step, "Metric", transform=ax.transAxes,
-                fontsize=10, fontweight="bold", color="#333")
-        ax.text(x_value, y_start + step, "Value", transform=ax.transAxes,
-                fontsize=10, fontweight="bold", color="#333")
+        ax.text(
+            x_label,
+            y_start + step,
+            "Metric",
+            transform=ax.transAxes,
+            fontsize=10,
+            fontweight="bold",
+            color="#333",
+        )
+        ax.text(
+            x_value,
+            y_start + step,
+            "Value",
+            transform=ax.transAxes,
+            fontsize=10,
+            fontweight="bold",
+            color="#333",
+        )
         ax.plot(
             [col_offset * 0.50, 0.50 + col_offset * 0.50],
             [y_start + step * 0.5, y_start + step * 0.5],
@@ -125,11 +156,18 @@ def _page_summary(pdf: PdfPages, result: BacktestResult, name: str) -> None:
 
         for j, (label, value, color) in enumerate(group):
             y = y_start - j * step
-            bg = "#F5F5F5" if j % 2 == 0 else "white"
-            ax.text(x_label, y, label, transform=ax.transAxes,
-                    fontsize=9, va="top", color="#222")
-            ax.text(x_value, y, value, transform=ax.transAxes,
-                    fontsize=9, va="top", fontweight="bold", color=color)
+            "#F5F5F5" if j % 2 == 0 else "white"
+            ax.text(x_label, y, label, transform=ax.transAxes, fontsize=9, va="top", color="#222")
+            ax.text(
+                x_value,
+                y,
+                value,
+                transform=ax.transAxes,
+                fontsize=9,
+                va="top",
+                fontweight="bold",
+                color=color,
+            )
 
     _add_footer(fig, result)
     pdf.savefig(fig, bbox_inches="tight")
@@ -146,14 +184,25 @@ def _page_equity_curve(pdf: PdfPages, result: BacktestResult, name: str) -> None
     fig, ax = plt.subplots(figsize=(_FIG_W, _FIG_H))
 
     eq_rebased = eq / eq.iloc[0] * 100
-    ax.plot(eq_rebased.index, eq_rebased.values, color=_STRATEGY_COLOR,
-            linewidth=1.5, label=f"{name} (net)")
+    ax.plot(
+        eq_rebased.index,
+        eq_rebased.values,
+        color=_STRATEGY_COLOR,
+        linewidth=1.5,
+        label=f"{name} (net)",
+    )
 
     if not bench.empty:
         bench_rebased = bench / bench.iloc[0] * 100
-        ax.plot(bench_rebased.index, bench_rebased.values, color=_BENCHMARK_COLOR,
-                linewidth=1.2, linestyle="--", label=result.config.benchmark_symbol,
-                alpha=0.85)
+        ax.plot(
+            bench_rebased.index,
+            bench_rebased.values,
+            color=_BENCHMARK_COLOR,
+            linewidth=1.2,
+            linestyle="--",
+            label=result.config.benchmark_symbol,
+            alpha=0.85,
+        )
 
     ax.axhline(100, color="#999", linewidth=0.8, linestyle=":")
     ax.set_title(f"{name} — Equity Curve (rebased to 100)", fontsize=_TITLE_SIZE, pad=12)
@@ -166,8 +215,10 @@ def _page_equity_curve(pdf: PdfPages, result: BacktestResult, name: str) -> None
     ax.annotate(
         f"Final: {eq_rebased.iloc[-1]:.1f}",
         xy=(eq_rebased.index[-1], eq_rebased.iloc[-1]),
-        xytext=(-60, 10), textcoords="offset points",
-        fontsize=9, color=_STRATEGY_COLOR,
+        xytext=(-60, 10),
+        textcoords="offset points",
+        fontsize=9,
+        color=_STRATEGY_COLOR,
         arrowprops={"arrowstyle": "->", "color": _STRATEGY_COLOR, "lw": 0.8},
     )
 
@@ -190,16 +241,20 @@ def _page_drawdown(pdf: PdfPages, result: BacktestResult, name: str) -> None:
     ax.fill_between(dd.index, dd.values, 0, color=_NEGATIVE_COLOR, alpha=0.55, label="Drawdown")
     ax.plot(dd.index, dd.values, color=_NEGATIVE_COLOR, linewidth=0.8)
 
-    ax.axhline(result.metrics.max_drawdown * 100, color="#B71C1C",
-               linewidth=0.8, linestyle="--",
-               label=f"Max DD: {result.metrics.max_drawdown:.1%}")
+    ax.axhline(
+        result.metrics.max_drawdown * 100,
+        color="#B71C1C",
+        linewidth=0.8,
+        linestyle="--",
+        label=f"Max DD: {result.metrics.max_drawdown:.1%}",
+    )
 
     ax.set_title(f"{name} — Underwater Chart", fontsize=_TITLE_SIZE, pad=12)
     ax.set_ylabel("Drawdown (%)", fontsize=_LABEL_SIZE)
     ax.legend(fontsize=_LABEL_SIZE)
     ax.grid(alpha=_GRID_ALPHA)
     ax.tick_params(labelsize=_TICK_SIZE)
-    ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f"{x:.0f}%"))
+    ax.yaxis.set_major_formatter(FuncFormatter(lambda x, _: f"{x:.0f}%"))
 
     _add_footer(fig, result)
     pdf.savefig(fig, bbox_inches="tight")
@@ -213,23 +268,32 @@ def _page_rolling_sharpe(pdf: PdfPages, result: BacktestResult, name: str) -> No
         return
 
     ret = eq.pct_change().dropna()
-    roll_sharpe = ret.rolling(252).apply(
-        lambda r: (r.mean() / r.std() * np.sqrt(252)) if r.std() > 1e-8 else 0.0
-    ).dropna()
+    roll_sharpe = (
+        ret.rolling(252)
+        .apply(lambda r: (r.mean() / r.std() * np.sqrt(252)) if r.std() > 1e-8 else 0.0)
+        .dropna()
+    )
 
     fig, ax = plt.subplots(figsize=(_FIG_W, _FIG_H))
     ax.plot(roll_sharpe.index, roll_sharpe.values, color=_STRATEGY_COLOR, linewidth=1.2)
     ax.fill_between(
-        roll_sharpe.index, roll_sharpe.values, 0,
-        where=roll_sharpe.values >= 0, color=_POSITIVE_COLOR, alpha=0.30
+        roll_sharpe.index,
+        roll_sharpe.values,
+        0,
+        where=roll_sharpe.values >= 0,
+        color=_POSITIVE_COLOR,
+        alpha=0.30,
     )
     ax.fill_between(
-        roll_sharpe.index, roll_sharpe.values, 0,
-        where=roll_sharpe.values < 0, color=_NEGATIVE_COLOR, alpha=0.30
+        roll_sharpe.index,
+        roll_sharpe.values,
+        0,
+        where=roll_sharpe.values < 0,
+        color=_NEGATIVE_COLOR,
+        alpha=0.30,
     )
     ax.axhline(0, color="#555", linewidth=0.8, linestyle=":")
-    ax.axhline(1.0, color=_POSITIVE_COLOR, linewidth=0.8, linestyle="--",
-               label="Sharpe = 1.0")
+    ax.axhline(1.0, color=_POSITIVE_COLOR, linewidth=0.8, linestyle="--", label="Sharpe = 1.0")
 
     ax.set_title(f"{name} — Rolling 252-Day Sharpe Ratio", fontsize=_TITLE_SIZE, pad=12)
     ax.set_ylabel("Sharpe Ratio", fontsize=_LABEL_SIZE)
@@ -255,8 +319,13 @@ def _page_ic_series(pdf: PdfPages, result: BacktestResult) -> None:
     fig, ax = plt.subplots(figsize=(_FIG_W, _FIG_H))
     colors = [_POSITIVE_COLOR if v >= 0 else _NEGATIVE_COLOR for v in ic_vals]
     ax.bar(ic_dates, ic_vals, color=colors, width=15, alpha=0.70, label="IC per period")
-    ax.plot(roll_mean.index, roll_mean.values, color=_STRATEGY_COLOR,
-            linewidth=1.8, label="12-period rolling mean")
+    ax.plot(
+        roll_mean.index,
+        roll_mean.values,
+        color=_STRATEGY_COLOR,
+        linewidth=1.8,
+        label="12-period rolling mean",
+    )
     ax.axhline(0, color="#555", linewidth=0.8, linestyle=":")
     ax.axhline(0.03, color="#888", linewidth=0.8, linestyle="--", label="IC = 0.03 target")
 
@@ -264,7 +333,8 @@ def _page_ic_series(pdf: PdfPages, result: BacktestResult) -> None:
     icir = result.metrics.icir
     ax.set_title(
         f"Information Coefficient Series  |  Mean IC={ic_mean:.3f}  ICIR={icir:.2f}",
-        fontsize=_TITLE_SIZE, pad=12,
+        fontsize=_TITLE_SIZE,
+        pad=12,
     )
     ax.set_ylabel("Spearman IC", fontsize=_LABEL_SIZE)
     ax.legend(fontsize=_LABEL_SIZE)
@@ -297,8 +367,14 @@ def _page_stress_periods(pdf: PdfPages, result: BacktestResult) -> None:
     ax1.tick_params(labelsize=_TICK_SIZE)
     ax1.grid(alpha=_GRID_ALPHA, axis="x")
     for i, v in enumerate(sharpes):
-        ax1.text(v + 0.02, i, f"{v:.2f}", va="center", fontsize=9,
-                 color=_POSITIVE_COLOR if v >= 0 else _NEGATIVE_COLOR)
+        ax1.text(
+            v + 0.02,
+            i,
+            f"{v:.2f}",
+            va="center",
+            fontsize=9,
+            color=_POSITIVE_COLOR if v >= 0 else _NEGATIVE_COLOR,
+        )
 
     # Max drawdown
     colors_d = [_NEGATIVE_COLOR] * len(drawdowns)
@@ -376,12 +452,16 @@ def _metric_rows(m: PerformanceMetrics) -> list[tuple[str, str, str]]:
     ]
 
 
-def _add_footer(fig: plt.Figure, result: BacktestResult) -> None:
+def _add_footer(fig: Figure, result: BacktestResult) -> None:
     """Add a footer line with period and generation timestamp."""
     fig.text(
-        0.5, 0.01,
+        0.5,
+        0.01,
         f"QuantFlow Backtest  |  "
         f"{result.config.start_date} → {result.config.end_date}  |  "
         f"Generated {datetime.now().strftime('%Y-%m-%d %H:%M')}",
-        ha="center", va="bottom", fontsize=8, color="#888",
+        ha="center",
+        va="bottom",
+        fontsize=8,
+        color="#888",
     )

@@ -11,16 +11,12 @@ The orchestrator is responsible for coordination and timeout enforcement.
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from quantflow.agents.ceo_model import CEOValidatorModel
 from quantflow.agents.schemas import AgentOutput, ValidatedIntelligenceReport
 from quantflow.agents.sentiment import SentimentAggregator
-from quantflow.config.constants import (
-    AGENT_INTERVAL_FREE_HOURS,
-    AGENT_INTERVAL_PREMIUM_HOURS,
-)
 from quantflow.config.logging import get_logger
 
 logger = get_logger(__name__)
@@ -89,7 +85,7 @@ class AgentOrchestrator:
             and key narrative.
         """
         logger.info("Intelligence cycle starting", symbol=symbol)
-        start = datetime.now(tz=timezone.utc)
+        start = datetime.now(tz=UTC)
 
         # --- Phase 1: Scrape raw documents ---
         raw_docs = []
@@ -99,7 +95,7 @@ class AgentOrchestrator:
                     self._scraper.scrape_all(symbol),
                     timeout=self._timeout * 0.4,
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 logger.warning("Web scrape timed out", symbol=symbol)
             except Exception as exc:
                 logger.warning("Web scrape failed", symbol=symbol, error=str(exc))
@@ -130,7 +126,7 @@ class AgentOrchestrator:
                 *agent_tasks.values(),
                 return_exceptions=True,
             )
-            for name, result in zip(agent_tasks.keys(), results):
+            for name, result in zip(agent_tasks.keys(), results, strict=False):
                 if isinstance(result, Exception):
                     logger.warning(
                         "Agent failed",
@@ -139,7 +135,7 @@ class AgentOrchestrator:
                         error=str(result),
                     )
                 else:
-                    agent_outputs.append(result)
+                    agent_outputs.append(result)  # type: ignore[arg-type]
 
         # --- Phase 3: Sentiment aggregation ---
         aggregated = self._sentiment.aggregate(agent_outputs, raw_docs)
@@ -150,7 +146,7 @@ class AgentOrchestrator:
                 AgentOutput(
                     agent_name="WebScraperAgent",
                     symbol=symbol,
-                    timestamp=datetime.now(tz=timezone.utc),
+                    timestamp=datetime.now(tz=UTC),
                     sentiment_score=aggregated.composite_sentiment,
                     confidence=0.40,
                     raw_sources=[d.url for d in raw_docs[:5]],
@@ -160,7 +156,7 @@ class AgentOrchestrator:
         # --- Phase 4: CEO validation ---
         report = await self._ceo.validate(agent_outputs, market_data or {})
 
-        elapsed = (datetime.now(tz=timezone.utc) - start).total_seconds()
+        elapsed = (datetime.now(tz=UTC) - start).total_seconds()
         logger.info(
             "Intelligence cycle complete",
             symbol=symbol,
@@ -186,13 +182,10 @@ class AgentOrchestrator:
             Dict mapping symbol → :class:`ValidatedIntelligenceReport`.
         """
         md = market_data or {}
-        tasks = {
-            sym: self.run_intelligence_cycle(sym, md.get(sym))
-            for sym in symbols
-        }
+        tasks = {sym: self.run_intelligence_cycle(sym, md.get(sym)) for sym in symbols}
         results = await asyncio.gather(*tasks.values(), return_exceptions=True)
         reports: dict[str, ValidatedIntelligenceReport] = {}
-        for sym, result in zip(tasks.keys(), results):
+        for sym, result in zip(tasks.keys(), results, strict=False):
             if isinstance(result, Exception):
                 logger.error(
                     "Intelligence cycle failed",
@@ -200,5 +193,5 @@ class AgentOrchestrator:
                     error=str(result),
                 )
             else:
-                reports[sym] = result
+                reports[sym] = result  # type: ignore[assignment]
         return reports

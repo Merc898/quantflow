@@ -12,14 +12,17 @@ Steps:
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import numpy as np
-import pandas as pd
 import scipy.cluster.hierarchy as sch
-from pydantic import BaseModel
 
 from quantflow.config.constants import HRP_LINKAGE_METHOD, TRADING_DAYS_PER_YEAR
 from quantflow.config.logging import get_logger
 from quantflow.portfolio.optimizer import OptimizationResult
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 logger = get_logger(__name__)
 
@@ -58,9 +61,7 @@ class HRPOptimizer:
         """
         data = returns.dropna(how="any").values.astype(np.float64)
         if len(data) < _MIN_OBSERVATIONS:
-            raise ValueError(
-                f"Need at least {_MIN_OBSERVATIONS} observations, got {len(data)}"
-            )
+            raise ValueError(f"Need at least {_MIN_OBSERVATIONS} observations, got {len(data)}")
 
         assets = list(returns.columns)
         N = len(assets)
@@ -188,7 +189,7 @@ class HRPOptimizer:
             alpha = 1.0 - var_l / total  # Right cluster gets alpha
 
             for idx in left:
-                weights[pos_of[idx]] *= (1.0 - alpha)
+                weights[pos_of[idx]] *= 1.0 - alpha
             for idx in right:
                 weights[pos_of[idx]] *= alpha
 

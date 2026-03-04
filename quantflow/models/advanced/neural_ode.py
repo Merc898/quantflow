@@ -23,15 +23,17 @@ References:
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
-import pandas as pd
 
 from quantflow.config.constants import TRADING_DAYS_PER_YEAR
 from quantflow.config.logging import get_logger
 from quantflow.models.base import BaseQuantModel, ModelOutput
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 logger = get_logger(__name__)
 
@@ -75,10 +77,10 @@ if _TORCH_AVAILABLE:
                 nn.Linear(hidden_dim, hidden_dim),
             )
 
-        def forward(self, t: "torch.Tensor", h: "torch.Tensor") -> "torch.Tensor":
+        def forward(self, t: torch.Tensor, h: torch.Tensor) -> torch.Tensor:
             # Append time as an extra feature
             t_expand = t.expand(h.shape[0], 1)
-            return self.net(torch.cat([h, t_expand], dim=-1))  # type: ignore[attr-defined]
+            return self.net(torch.cat([h, t_expand], dim=-1))
 
     class _NeuralODENet(nn.Module):
         """Full encoder-ODE-decoder architecture.
@@ -106,7 +108,7 @@ if _TORCH_AVAILABLE:
             # Decoder
             self.decoder = nn.Linear(hidden_dim, 1)
 
-        def forward(self, x_seq: "torch.Tensor") -> "torch.Tensor":
+        def forward(self, x_seq: torch.Tensor) -> torch.Tensor:
             """Forward pass.
 
             Args:
@@ -119,20 +121,25 @@ if _TORCH_AVAILABLE:
             h0 = self.h0_proj(hn[-1])  # (batch, hidden_dim)
 
             # Integrate ODE over t=[0, 1]
-            t_span = torch.linspace(0.0, 1.0, self.n_steps + 1, dtype=torch.float32)  # type: ignore[attr-defined]
+            t_span = torch.linspace(0.0, 1.0, self.n_steps + 1, dtype=torch.float32)
 
             if _TORCHDIFFEQ_AVAILABLE:
                 hT = _odeint(
-                    self.ode_func, h0, t_span,
+                    self.ode_func,
+                    h0,
+                    t_span,
                     method="dopri5",
-                    rtol=1e-3, atol=1e-4,
-                )[-1]  # (batch, hidden_dim)
+                    rtol=1e-3,
+                    atol=1e-4,
+                )[
+                    -1
+                ]  # (batch, hidden_dim)
             else:
                 # Euler integrator (fallback)
                 hT = h0
                 dt = 1.0 / self.n_steps
                 for i in range(self.n_steps):
-                    t_i = torch.tensor(i * dt, dtype=torch.float32)  # type: ignore[attr-defined]
+                    t_i = torch.tensor(i * dt, dtype=torch.float32)
                     hT = hT + self.ode_func(t_i, hT) * dt
 
             return self.decoder(hT).squeeze(-1)
@@ -164,8 +171,8 @@ def _build_sequences(
     r = returns.to_numpy(dtype=np.float32)
     X_list, y_list = [], []
     for i in range(seq_len, len(r) - horizon):
-        X_list.append(r[i - seq_len: i].reshape(seq_len, 1))
-        y_list.append(float(r[i: i + horizon].sum()))
+        X_list.append(r[i - seq_len : i].reshape(seq_len, 1))
+        y_list.append(float(r[i : i + horizon].sum()))
     if not X_list:
         return np.empty((0, seq_len, 1), dtype=np.float32), np.empty(0, dtype=np.float32)
     return np.array(X_list, dtype=np.float32), np.array(y_list, dtype=np.float32)
@@ -217,7 +224,7 @@ class NeuralODEModel(BaseQuantModel):
     # Public interface
     # ------------------------------------------------------------------
 
-    def fit(self, data: pd.DataFrame) -> "NeuralODEModel":
+    def fit(self, data: pd.DataFrame) -> NeuralODEModel:
         """Train Neural ODE on historical return sequences.
 
         Args:
@@ -247,18 +254,18 @@ class NeuralODEModel(BaseQuantModel):
         y_norm = (y - self._ret_mean) / self._ret_std
 
         if self._seed is not None:
-            torch.manual_seed(self._seed)  # type: ignore[attr-defined]
+            torch.manual_seed(self._seed)
 
         self._net = _NeuralODENet(
             input_dim=1,
             hidden_dim=self._hidden_dim,
             n_steps=self._n_steps,
         )
-        opt = optim.Adam(self._net.parameters(), lr=self._lr, weight_decay=1e-4)  # type: ignore[attr-defined]
-        criterion = nn.MSELoss()  # type: ignore[attr-defined]
+        opt = optim.Adam(self._net.parameters(), lr=self._lr, weight_decay=1e-4)
+        criterion = nn.MSELoss()
 
-        X_t = torch.tensor(X, dtype=torch.float32)  # type: ignore[attr-defined]
-        y_t = torch.tensor(y_norm, dtype=torch.float32)  # type: ignore[attr-defined]
+        X_t = torch.tensor(X, dtype=torch.float32)
+        y_t = torch.tensor(y_norm, dtype=torch.float32)
 
         self._net.train()
         for _ in range(self._n_epochs):
@@ -266,7 +273,7 @@ class NeuralODEModel(BaseQuantModel):
             pred = self._net(X_t)
             loss = criterion(pred, y_t)
             loss.backward()
-            nn.utils.clip_grad_norm_(self._net.parameters(), max_norm=1.0)  # type: ignore[attr-defined]
+            nn.utils.clip_grad_norm_(self._net.parameters(), max_norm=1.0)
             opt.step()
 
         self._is_fitted = True
@@ -296,13 +303,11 @@ class NeuralODEModel(BaseQuantModel):
         if len(log_returns) < self._seq_len:
             raise ValueError(f"Need ≥{self._seq_len} observations for prediction.")
 
-        recent = log_returns.iloc[-self._seq_len:].to_numpy(dtype=np.float32)
-        X_t = torch.tensor(  # type: ignore[attr-defined]
-            recent.reshape(1, self._seq_len, 1), dtype=torch.float32
-        )
+        recent = log_returns.iloc[-self._seq_len :].to_numpy(dtype=np.float32)
+        X_t = torch.tensor(recent.reshape(1, self._seq_len, 1), dtype=torch.float32)
 
         self._net.eval()
-        with torch.no_grad():  # type: ignore[attr-defined]
+        with torch.no_grad():
             pred_norm = self._net(X_t).item()
 
         # De-normalise
@@ -320,7 +325,7 @@ class NeuralODEModel(BaseQuantModel):
         return ModelOutput(
             model_name=self.model_name,
             symbol=self.symbol,
-            timestamp=datetime.now(tz=timezone.utc),
+            timestamp=datetime.now(tz=UTC),
             signal=round(signal, 6),
             confidence=confidence,
             forecast_return=round(pred_ret * (TRADING_DAYS_PER_YEAR / self._horizon), 6),
@@ -348,13 +353,15 @@ class NeuralODEModel(BaseQuantModel):
 
     def _fallback_predict(self, data: pd.DataFrame) -> ModelOutput:
         log_returns = np.log(data["close"] / data["close"].shift(1)).dropna()
-        recent_ret = float(log_returns.iloc[-self._horizon:].sum())
+        recent_ret = float(log_returns.iloc[-self._horizon :].sum())
         ann_vol = float(log_returns.std() * np.sqrt(TRADING_DAYS_PER_YEAR))
-        signal = self.normalise_signal(recent_ret / max(ann_vol / np.sqrt(TRADING_DAYS_PER_YEAR / self._horizon), 1e-6))
+        signal = self.normalise_signal(
+            recent_ret / max(ann_vol / np.sqrt(TRADING_DAYS_PER_YEAR / self._horizon), 1e-6)
+        )
         return ModelOutput(
             model_name=self.model_name,
             symbol=self.symbol,
-            timestamp=datetime.now(tz=timezone.utc),
+            timestamp=datetime.now(tz=UTC),
             signal=round(signal, 6),
             confidence=0.30,
             forecast_return=round(recent_ret * (TRADING_DAYS_PER_YEAR / self._horizon), 6),

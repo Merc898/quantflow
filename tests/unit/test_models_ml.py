@@ -12,7 +12,6 @@ import pytest
 
 from quantflow.models.base import ModelOutput
 
-
 # ===========================================================================
 # Helpers
 # ===========================================================================
@@ -132,7 +131,9 @@ class TestGBTSignalModel:
         from quantflow.models.ml.gradient_boosting import GBTSignalModel
 
         # Use very few trials to keep the test fast
-        model = GBTSignalModel("AAPL", framework="lightgbm", tune_hyperparams=True, n_optuna_trials=3)
+        model = GBTSignalModel(
+            "AAPL", framework="lightgbm", tune_hyperparams=True, n_optuna_trials=3
+        )
         model.fit(data)
         assert model._best_params  # non-empty after tuning
         out = model.predict()
@@ -313,7 +314,7 @@ class TestLSTMSignalModel:
 
         X = np.random.randn(5, 3).astype(np.float32)
         y = np.random.randn(5).astype(np.float32)
-        seqs, targets = _build_sequences(X, y, seq_len=10)
+        seqs, _targets = _build_sequences(X, y, seq_len=10)
         assert len(seqs) == 0
 
 
@@ -431,8 +432,8 @@ class TestDRLPortfolioAgent:
             model.predict()
 
     def test_portfolio_env_reset_step(self, data: pd.DataFrame) -> None:
-        from quantflow.models.ml.deep_rl import PortfolioEnv
         from quantflow.data.features import compute_all_features
+        from quantflow.models.ml.deep_rl import PortfolioEnv
         from quantflow.models.ml.gradient_boosting import _build_xy
 
         close = data["close"].astype(np.float64)
@@ -448,7 +449,7 @@ class TestDRLPortfolioAgent:
         assert obs.shape == (X.shape[1],)
 
         action = np.array([0.5], dtype=np.float32)
-        next_obs, reward, terminated, truncated, info = env.step(action)
+        next_obs, reward, _terminated, _truncated, info = env.step(action)
         assert next_obs.shape == (X.shape[1],)
         assert np.isfinite(reward)
         assert "weight" in info
@@ -460,10 +461,10 @@ class TestDRLPortfolioAgent:
         rets = np.random.randn(50).astype(np.float32) * 0.01
 
         env = DiscretePortfolioEnv(X, rets)
-        obs, _ = env.reset()
+        _obs, _ = env.reset()
         for action in range(5):
             env.reset()
-            next_obs, reward, done, trunc, info = env.step(action)
+            _next_obs, reward, _done, _trunc, _info = env.step(action)
             assert np.isfinite(reward)
 
 

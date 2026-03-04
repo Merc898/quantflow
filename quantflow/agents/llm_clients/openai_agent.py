@@ -10,7 +10,7 @@ Responsibilities:
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -184,7 +184,7 @@ class OpenAIAgent(BaseLLMClient):
         return AgentOutput(
             agent_name="OpenAIAgent",
             symbol=symbol,
-            timestamp=datetime.now(tz=timezone.utc),
+            timestamp=datetime.now(tz=UTC),
             sentiment_score=sentiment.score,
             confidence=sentiment.confidence,
             bullish_factors=sentiment.bullish_factors,
@@ -240,9 +240,7 @@ class OpenAIAgent(BaseLLMClient):
             self._total_tokens_used += usage.get("total_tokens", 0)
             return content
         except (KeyError, IndexError) as exc:
-            raise LLMClientError(
-                f"Unexpected OpenAI response structure: {response}"
-            ) from exc
+            raise LLMClientError(f"Unexpected OpenAI response structure: {response}") from exc
 
     async def _call_api(
         self,

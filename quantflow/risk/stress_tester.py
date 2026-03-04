@@ -8,21 +8,22 @@ Three scenario types:
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
-import pandas as pd
-import scipy.stats as stats
 from pydantic import BaseModel, Field
 
-from quantflow.config.constants import STRESS_PERIODS, TRADING_DAYS_PER_YEAR
+from quantflow.config.constants import STRESS_PERIODS
 from quantflow.config.logging import get_logger
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 logger = get_logger(__name__)
 
 _DEFAULT_N_STRESS_SCENARIOS = 50_000
-_STRESS_TAIL_DF = 4.0          # t-distribution df for stress MC
-_STRESS_VOL_MULTIPLIER = 3.0   # Inflate vol for stress scenarios
+_STRESS_TAIL_DF = 4.0  # t-distribution df for stress MC
+_STRESS_VOL_MULTIPLIER = 3.0  # Inflate vol for stress scenarios
 
 
 # ---------------------------------------------------------------------------
@@ -214,8 +215,7 @@ class StressTester:
         for i, asset in enumerate(assets):
             asset_betas = betas.get(asset, {})
             asset_ret = sum(
-                asset_betas.get(factor, 0.0) * shock
-                for factor, shock in shock_dict.items()
+                asset_betas.get(factor, 0.0) * shock for factor, shock in shock_dict.items()
             )
             asset_returns[i] = asset_ret
 
@@ -289,10 +289,14 @@ class StressTester:
         t_factor = np.sqrt(chi2 / _STRESS_TAIL_DF)
 
         # Daily stressed returns: (n_sims, n_assets, horizon)
-        stressed_daily = mu[np.newaxis, :, np.newaxis] + (L @ Z.transpose(0, 2, 1)).transpose(0, 2, 1) / t_factor
+        stressed_daily = (
+            mu[np.newaxis, :, np.newaxis] + (L @ Z.transpose(0, 2, 1)).transpose(0, 2, 1) / t_factor
+        )
 
         # Portfolio return over horizon
-        port_daily = (stressed_daily * w[np.newaxis, :, np.newaxis]).sum(axis=1)  # (n_sims, horizon)
+        port_daily = (stressed_daily * w[np.newaxis, :, np.newaxis]).sum(
+            axis=1
+        )  # (n_sims, horizon)
         port_total = port_daily.sum(axis=1)  # (n_sims,)
 
         p50 = float(np.percentile(port_total, 50))

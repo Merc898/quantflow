@@ -15,11 +15,10 @@ Signal → Recommendation mapping:
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any, Literal
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
-import pandas as pd
 from pydantic import BaseModel, Field
 
 from quantflow.config.constants import (
@@ -37,16 +36,20 @@ from quantflow.config.constants import (
     TRADING_DAYS_PER_YEAR,
 )
 from quantflow.config.logging import get_logger
-from quantflow.models.base import ModelOutput
-from quantflow.risk.var_es import RiskReport
-from quantflow.signals.regime_detector import RegimeState
+
+if TYPE_CHECKING:
+    import pandas as pd
+
+    from quantflow.models.base import ModelOutput
+    from quantflow.risk.var_es import RiskReport
+    from quantflow.signals.regime_detector import RegimeState
 
 logger = get_logger(__name__)
 
 # Risk gate parameters
-_VOL_SPIKE_MULTIPLIER = 3.0         # Annualised vol > 3× 252d average → hold
-_MAX_DRAWDOWN_GATE = 0.15           # 30-day drawdown > 15% → hold
-_EARNINGS_LOOKBACK_DAYS = 3         # Earnings within 3 days → apply caution
+_VOL_SPIKE_MULTIPLIER = 3.0  # Annualised vol > 3× 252d average → hold
+_MAX_DRAWDOWN_GATE = 0.15  # 30-day drawdown > 15% → hold
+_EARNINGS_LOOKBACK_DAYS = 3  # Earnings within 3 days → apply caution
 
 
 # ---------------------------------------------------------------------------
@@ -80,10 +83,9 @@ class FinalRecommendation(BaseModel):
     """
 
     symbol: str
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(tz=timezone.utc))
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(tz=UTC))
     recommendation: Literal[
-        "STRONG_BUY", "BUY", "WEAK_BUY", "HOLD",
-        "WEAK_SELL", "SELL", "STRONG_SELL"
+        "STRONG_BUY", "BUY", "WEAK_BUY", "HOLD", "WEAK_SELL", "SELL", "STRONG_SELL"
     ]
     signal_strength: float = Field(..., ge=-1.0, le=1.0)
     confidence: float = Field(..., ge=0.0, le=1.0)
@@ -296,9 +298,7 @@ class RecommendationEngine:
         base = signal * confidence
 
         if returns is not None and len(returns.dropna()) >= 21:
-            realized_vol = float(
-                returns.dropna().iloc[-21:].std() * np.sqrt(TRADING_DAYS_PER_YEAR)
-            )
+            realized_vol = float(returns.dropna().iloc[-21:].std() * np.sqrt(TRADING_DAYS_PER_YEAR))
             if realized_vol > 1e-6:
                 base *= self._target_vol / realized_vol
 
@@ -329,12 +329,8 @@ class RecommendationEngine:
 
             # Gate 1: Vol spike (current vol > 3× trailing-year average)
             if len(clean) >= 252:
-                annual_avg_vol = float(
-                    clean.iloc[:-21].std() * np.sqrt(TRADING_DAYS_PER_YEAR)
-                )
-                current_vol = float(
-                    clean.iloc[-21:].std() * np.sqrt(TRADING_DAYS_PER_YEAR)
-                )
+                annual_avg_vol = float(clean.iloc[:-21].std() * np.sqrt(TRADING_DAYS_PER_YEAR))
+                current_vol = float(clean.iloc[-21:].std() * np.sqrt(TRADING_DAYS_PER_YEAR))
                 if annual_avg_vol > 1e-6 and current_vol > _VOL_SPIKE_MULTIPLIER * annual_avg_vol:
                     warnings.append(
                         f"Volatility spike: {current_vol:.0%} > "

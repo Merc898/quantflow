@@ -6,7 +6,7 @@ with live web citations — giving the most current market intelligence.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -113,7 +113,7 @@ class PerplexityAgent(BaseLLMClient):
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         valid: list[PerplexityResponse] = []
-        for q, r in zip(queries, results):
+        for q, r in zip(queries, results, strict=False):
             if isinstance(r, Exception):
                 self._logger.warning(
                     "Perplexity query failed",
@@ -122,7 +122,7 @@ class PerplexityAgent(BaseLLMClient):
                     error=str(r),
                 )
             else:
-                valid.append(r)
+                valid.append(r)  # type: ignore[arg-type]
         return valid
 
     async def build_agent_output(
@@ -143,7 +143,7 @@ class PerplexityAgent(BaseLLMClient):
             return AgentOutput(
                 agent_name="PerplexityAgent",
                 symbol=symbol,
-                timestamp=datetime.now(tz=timezone.utc),
+                timestamp=datetime.now(tz=UTC),
                 sentiment_score=0.0,
                 confidence=0.0,
                 metadata={"error": "all_queries_failed"},
@@ -160,7 +160,7 @@ class PerplexityAgent(BaseLLMClient):
         return AgentOutput(
             agent_name="PerplexityAgent",
             symbol=symbol,
-            timestamp=datetime.now(tz=timezone.utc),
+            timestamp=datetime.now(tz=UTC),
             sentiment_score=sentiment,
             confidence=min(0.80, 0.4 + len(all_citations) * 0.02),
             key_events=self._extract_key_phrases(combined_text),
@@ -213,9 +213,7 @@ class PerplexityAgent(BaseLLMClient):
                 tokens_used=usage.get("total_tokens", 0),
             )
         except (KeyError, IndexError) as exc:
-            raise LLMClientError(
-                f"Unexpected Perplexity response structure: {response}"
-            ) from exc
+            raise LLMClientError(f"Unexpected Perplexity response structure: {response}") from exc
 
     def _keyword_sentiment(self, text: str) -> float:
         """Fast keyword-based sentiment score as a Perplexity pre-pass.
@@ -231,12 +229,30 @@ class PerplexityAgent(BaseLLMClient):
         """
         text_lower = text.lower()
         bullish_kw = [
-            "upgrade", "beat", "outperform", "bullish", "growth", "strong",
-            "positive", "buy", "momentum", "record", "guidance raised",
+            "upgrade",
+            "beat",
+            "outperform",
+            "bullish",
+            "growth",
+            "strong",
+            "positive",
+            "buy",
+            "momentum",
+            "record",
+            "guidance raised",
         ]
         bearish_kw = [
-            "downgrade", "miss", "underperform", "bearish", "decline", "weak",
-            "negative", "sell", "layoffs", "guidance lowered", "risk",
+            "downgrade",
+            "miss",
+            "underperform",
+            "bearish",
+            "decline",
+            "weak",
+            "negative",
+            "sell",
+            "layoffs",
+            "guidance lowered",
+            "risk",
         ]
         bull_score = sum(text_lower.count(kw) for kw in bullish_kw)
         bear_score = sum(text_lower.count(kw) for kw in bearish_kw)
@@ -261,9 +277,23 @@ class PerplexityAgent(BaseLLMClient):
         # Split into sentences and pick the most information-dense ones
         sentences = re.split(r"[.!?]", text)
         trigger_words = {
-            "earnings", "revenue", "guidance", "merger", "acquisition",
-            "fda", "approval", "downgrade", "upgrade", "layoff", "recall",
-            "settlement", "dividend", "buyback", "ceo", "cfo", "outlook",
+            "earnings",
+            "revenue",
+            "guidance",
+            "merger",
+            "acquisition",
+            "fda",
+            "approval",
+            "downgrade",
+            "upgrade",
+            "layoff",
+            "recall",
+            "settlement",
+            "dividend",
+            "buyback",
+            "ceo",
+            "cfo",
+            "outlook",
         }
         scored = []
         for s in sentences:

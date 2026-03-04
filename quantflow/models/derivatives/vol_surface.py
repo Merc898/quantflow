@@ -17,27 +17,29 @@ Signal decomposition:
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 import numpy as np
-import pandas as pd
-from scipy.optimize import minimize
 from pydantic import BaseModel, Field
+from scipy.optimize import minimize
 
 from quantflow.config.constants import TRADING_DAYS_PER_YEAR
 from quantflow.config.logging import get_logger
 from quantflow.models.base import BaseQuantModel, ModelOutput
 
+if TYPE_CHECKING:
+    import pandas as pd
+
 logger = get_logger(__name__)
 
 # SVI parameter bounds
 _SVI_BOUNDS = [
-    (1e-6, 2.0),    # a  ≥ 0
-    (1e-6, 5.0),    # b  > 0
+    (1e-6, 2.0),  # a  ≥ 0
+    (1e-6, 5.0),  # b  > 0
     (-0.999, 0.999),  # rho ∈ (-1, 1)
-    (-1.0, 1.0),    # m
-    (1e-4, 2.0),    # sigma > 0
+    (-1.0, 1.0),  # m
+    (1e-4, 2.0),  # sigma > 0
 ]
 
 
@@ -130,7 +132,7 @@ class VolSurfaceModel(BaseQuantModel):
         self,
         data: pd.DataFrame,
         implied_vol_data: dict[int, dict[float, float]] | None = None,
-    ) -> "VolSurfaceModel":
+    ) -> VolSurfaceModel:
         """Fit the volatility surface.
 
         Args:
@@ -144,9 +146,7 @@ class VolSurfaceModel(BaseQuantModel):
         """
         log_returns = np.log(data["close"] / data["close"].shift(1)).dropna()
         if len(log_returns) < 42:
-            raise ValueError(
-                f"VolSurfaceModel requires ≥42 observations; got {len(log_returns)}"
-            )
+            raise ValueError(f"VolSurfaceModel requires ≥42 observations; got {len(log_returns)}")
 
         svi_fits: list[SVIParameters] = []
         if implied_vol_data:
@@ -181,14 +181,12 @@ class VolSurfaceModel(BaseQuantModel):
 
         # Regime from vol percentile
         pct = surf.vol_percentile
-        regime = (
-            "HIGH_VOL" if pct > 75 else ("LOW_VOL" if pct < 25 else "MEDIUM_VOL")
-        )
+        regime = "HIGH_VOL" if pct > 75 else ("LOW_VOL" if pct < 25 else "MEDIUM_VOL")
 
         return ModelOutput(
             model_name=self.model_name,
             symbol=self.symbol,
-            timestamp=datetime.now(tz=timezone.utc),
+            timestamp=datetime.now(tz=UTC),
             signal=round(signal, 6),
             confidence=round(confidence, 6),
             forecast_return=0.0,
@@ -220,7 +218,7 @@ class VolSurfaceModel(BaseQuantModel):
             Total variance w(k).
         """
         a, b, rho, m, sigma = params
-        return a + b * (rho * (k - m) + np.sqrt((k - m) ** 2 + sigma ** 2))
+        return a + b * (rho * (k - m) + np.sqrt((k - m) ** 2 + sigma**2))
 
     def _fit_svi_smile(
         self,
@@ -239,7 +237,7 @@ class VolSurfaceModel(BaseQuantModel):
         k = np.array(list(smile_data.keys()))
         iv = np.array(list(smile_data.values()))
         T = expiry_days / TRADING_DAYS_PER_YEAR
-        w_market = iv ** 2 * T  # total implied variance
+        w_market = iv**2 * T  # total implied variance
 
         def objective(p: np.ndarray) -> float:
             w_model = self._svi_total_variance(p, k)
@@ -247,11 +245,14 @@ class VolSurfaceModel(BaseQuantModel):
 
         # Initial guess: ATM vol level
         atm_vol = float(np.median(iv))
-        x0 = np.array([atm_vol ** 2 * T * 0.5, 0.1, -0.3, 0.0, 0.3])
+        x0 = np.array([atm_vol**2 * T * 0.5, 0.1, -0.3, 0.0, 0.3])
 
         try:
             res = minimize(
-                objective, x0, method="L-BFGS-B", bounds=_SVI_BOUNDS,
+                objective,
+                x0,
+                method="L-BFGS-B",
+                bounds=_SVI_BOUNDS,
                 options={"maxiter": 1000, "ftol": 1e-10},
             )
             params = res.x
@@ -263,7 +264,11 @@ class VolSurfaceModel(BaseQuantModel):
         a, b, rho, m, sigma = params
         return SVIParameters(
             expiry_days=expiry_days,
-            a=float(a), b=float(b), rho=float(rho), m=float(m), sigma=float(sigma),
+            a=float(a),
+            b=float(b),
+            rho=float(rho),
+            m=float(m),
+            sigma=float(sigma),
             fit_rmse=rmse,
         )
 
@@ -311,9 +316,7 @@ class VolSurfaceModel(BaseQuantModel):
         # Vol percentile vs rolling 252d
         if len(returns) >= 252:
             rolling_vol = returns.rolling(21).std().dropna() * np.sqrt(ann)
-            vol_pct = float(
-                (rolling_vol < vol_short).mean() * 100
-            )
+            vol_pct = float((rolling_vol < vol_short).mean() * 100)
         else:
             vol_pct = 50.0
 

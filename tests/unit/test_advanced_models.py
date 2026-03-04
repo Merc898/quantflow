@@ -18,7 +18,6 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import pytest
-from datetime import datetime, timezone
 
 from quantflow.models.base import ModelOutput
 
@@ -197,7 +196,7 @@ class TestVolSurfaceModel:
         from quantflow.models.derivatives.vol_surface import VolSurfaceModel
 
         # Synthetic smile: flat vol surface
-        smile = {k: 0.20 for k in np.linspace(-0.3, 0.3, 7)}
+        smile = dict.fromkeys(np.linspace(-0.3, 0.3, 7), 0.2)
         impl_data = {21: smile, 63: smile}
 
         m = VolSurfaceModel("TEST")
@@ -250,8 +249,8 @@ class TestHawkesModel:
 
         m = HawkesModel("TEST")
         m.fit(ohlcv_data)
-        mu_u, alpha_u, beta_u = m._up_params
-        mu_d, alpha_d, beta_d = m._dn_params
+        _mu_u, alpha_u, beta_u = m._up_params
+        _mu_d, alpha_d, beta_d = m._dn_params
         # Branching ratio must be < 1 for stability (or near 0 if no excitation)
         br_up = alpha_u / max(beta_u, 1e-8)
         br_dn = alpha_d / max(beta_d, 1e-8)
@@ -564,8 +563,8 @@ class TestHawkesLogLikelihood:
     def test_negative_ll_decreases_with_fit(self) -> None:
         """Fitted parameters should give a lower (better) NLL than random init."""
         from quantflow.models.microstructure.hawkes import (
-            _hawkes_log_likelihood,
             _fit_hawkes,
+            _hawkes_log_likelihood,
         )
 
         rng = np.random.default_rng(99)

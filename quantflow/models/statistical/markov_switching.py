@@ -6,14 +6,16 @@ Outputs smoothed state probabilities and regime-conditional forecasts.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
-import pandas as pd
 
 from quantflow.config.logging import get_logger
 from quantflow.models.base import BaseQuantModel, ModelOutput
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 logger = get_logger(__name__)
 
@@ -67,7 +69,7 @@ class MarkovSwitchingModel(BaseQuantModel):
     # Fit
     # ------------------------------------------------------------------
 
-    def fit(self, data: pd.DataFrame) -> "MarkovSwitchingModel":
+    def fit(self, data: pd.DataFrame) -> MarkovSwitchingModel:
         """Fit Markov-Switching AR model on log returns.
 
         Args:
@@ -76,9 +78,6 @@ class MarkovSwitchingModel(BaseQuantModel):
         Returns:
             Self (fitted model).
         """
-        from statsmodels.tsa.regime_switching.markov_autoregression import (
-            MarkovAutoregression,
-        )
 
         close = data["close"].astype(np.float64)
         log_ret = np.log(close / close.shift(1)).dropna().values * 100  # scale to %
@@ -195,7 +194,7 @@ class MarkovSwitchingModel(BaseQuantModel):
         return ModelOutput(
             model_name=self.model_name,
             symbol=self.symbol,
-            timestamp=datetime.now(tz=timezone.utc),
+            timestamp=datetime.now(tz=UTC),
             signal=signal,
             confidence=confidence,
             forecast_return=round(forecast_return / 100.0, 6),  # convert % back
@@ -229,7 +228,7 @@ class MarkovSwitchingModel(BaseQuantModel):
         return ModelOutput(
             model_name=self.model_name,
             symbol=self.symbol,
-            timestamp=datetime.now(tz=timezone.utc),
+            timestamp=datetime.now(tz=UTC),
             signal=0.0,
             confidence=0.0,
             forecast_return=0.0,

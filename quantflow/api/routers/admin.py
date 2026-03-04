@@ -5,8 +5,7 @@ All routes require ``institutional`` tier.
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from fastapi import APIRouter
 from pydantic import BaseModel
@@ -15,6 +14,9 @@ from sqlalchemy import select
 from quantflow.api.auth.dependencies import CurrentUser, DbDep, require_tier
 from quantflow.config.constants import TIER_INSTITUTIONAL
 from quantflow.db.models import User
+
+if TYPE_CHECKING:
+    from datetime import datetime
 
 router = APIRouter(tags=["admin"])
 
@@ -56,8 +58,6 @@ async def list_users(
 
     Requires **institutional** tier.
     """
-    result = await db.execute(
-        select(User).order_by(User.created_at.desc())
-    )
+    result = await db.execute(select(User).order_by(User.created_at.desc()))
     users = result.scalars().all()
     return [AdminUserResponse.model_validate(u) for u in users]

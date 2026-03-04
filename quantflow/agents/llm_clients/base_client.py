@@ -130,9 +130,7 @@ class BaseLLMClient(ABC):
             except (httpx.TimeoutException, httpx.ConnectError) as exc:
                 if attempt == self._max_retries:
                     self._record_failure()
-                    raise LLMClientError(
-                        f"Network error calling {endpoint}: {exc}"
-                    ) from exc
+                    raise LLMClientError(f"Network error calling {endpoint}: {exc}") from exc
                 delay = self._backoff_delay(attempt)
                 self._logger.warning(
                     "Network error, retrying",
@@ -165,7 +163,7 @@ class BaseLLMClient(ABC):
         stripped = text.strip()
         for fence in ("```json", "```"):
             if stripped.startswith(fence):
-                stripped = stripped[len(fence):]
+                stripped = stripped[len(fence) :]
                 if stripped.endswith("```"):
                     stripped = stripped[:-3]
                 stripped = stripped.strip()

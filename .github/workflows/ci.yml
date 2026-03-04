@@ -193,8 +193,8 @@ jobs:
       - name: Build frontend image (no push)
         uses: docker/build-push-action@v5
         with:
-          context: .
-          file: docker/Dockerfile.frontend
+          context: ./frontend
+          file: frontend/Dockerfile
           push: false
           tags: quantflow-frontend:ci
           cache-from: type=gha

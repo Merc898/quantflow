@@ -6,7 +6,7 @@ returns.  The idiosyncratic return momentum is the primary signal.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import numpy as np
@@ -14,7 +14,7 @@ import pandas as pd
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 
-from quantflow.config.constants import LOOKBACK_1Y, MOMENTUM_LOOKBACKS
+from quantflow.config.constants import LOOKBACK_1Y
 from quantflow.config.logging import get_logger
 from quantflow.models.base import BaseQuantModel, ModelOutput
 
@@ -72,7 +72,7 @@ class PCARiskFactorModel(BaseQuantModel):
     # Fit
     # ------------------------------------------------------------------
 
-    def fit(self, data: pd.DataFrame) -> "PCARiskFactorModel":
+    def fit(self, data: pd.DataFrame) -> PCARiskFactorModel:
         """Fit the PCA factor model on the last ``window`` rows of data.
 
         Args:
@@ -119,7 +119,7 @@ class PCARiskFactorModel(BaseQuantModel):
         idio_ret = target_ret - fitted
 
         # Store as a Series aligned to the data index
-        idx = data.index[-len(idio_ret):]
+        idx = data.index[-len(idio_ret) :]
         self._idiosyncratic_returns = pd.Series(idio_ret, index=idx)
 
         self._is_fitted = True
@@ -167,8 +167,7 @@ class PCARiskFactorModel(BaseQuantModel):
 
         # Scree data for frontend visualisation
         scree_data = {
-            f"PC{i+1}": round(float(v), 4)
-            for i, v in enumerate(self._explained_variance)
+            f"PC{i+1}": round(float(v), 4) for i, v in enumerate(self._explained_variance)
         }
 
         metadata: dict[str, Any] = {
@@ -182,7 +181,7 @@ class PCARiskFactorModel(BaseQuantModel):
         return ModelOutput(
             model_name=self.model_name,
             symbol=self.symbol,
-            timestamp=datetime.now(tz=timezone.utc),
+            timestamp=datetime.now(tz=UTC),
             signal=signal,
             confidence=confidence,
             forecast_return=round(forecast_return, 6),
@@ -205,21 +204,21 @@ class PCARiskFactorModel(BaseQuantModel):
         if numeric_cols:
             extras = []
             for col in numeric_cols:
-                col_ret = np.log(
-                    data[col].astype(np.float64) / data[col].astype(np.float64).shift(1)
-                ).dropna().values
+                col_ret = (
+                    np.log(data[col].astype(np.float64) / data[col].astype(np.float64).shift(1))
+                    .dropna()
+                    .values
+                )
                 # Align to target_ret length
                 min_len = min(len(target_ret), len(col_ret))
                 extras.append(col_ret[-min_len:])
             min_len = min(len(target_ret), *[len(e) for e in extras])
-            ret_matrix = np.column_stack(
-                [target_ret[-min_len:]] + [e[-min_len:] for e in extras]
-            )
+            ret_matrix = np.column_stack([target_ret[-min_len:]] + [e[-min_len:] for e in extras])
         else:
             ret_matrix = target_ret.reshape(-1, 1)
 
         # Use last `window` rows
-        ret_matrix = ret_matrix[-self.window:]
+        ret_matrix = ret_matrix[-self.window :]
         return ret_matrix.astype(np.float64)
 
     def _neutral_output(self) -> ModelOutput:
@@ -227,7 +226,7 @@ class PCARiskFactorModel(BaseQuantModel):
         return ModelOutput(
             model_name=self.model_name,
             symbol=self.symbol,
-            timestamp=datetime.now(tz=timezone.utc),
+            timestamp=datetime.now(tz=UTC),
             signal=0.0,
             confidence=0.0,
             forecast_return=0.0,

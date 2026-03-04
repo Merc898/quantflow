@@ -91,7 +91,9 @@ except ImportError:
 
 
 @task_prerun.connect
-def task_prerun_handler(task_id: str, task: object, args: tuple, kwargs: dict, **kw: object) -> None:
+def task_prerun_handler(
+    task_id: str, task: object, args: tuple, kwargs: dict, **kw: object
+) -> None:
     """Log task start."""
     logger.info("Task started", task_id=task_id, task_name=str(task))
 

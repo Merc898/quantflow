@@ -6,12 +6,14 @@ All logs are output as JSON for easy parsing and aggregation.
 
 import logging
 import sys
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import structlog
-from structlog.types import Processor
 
 from quantflow.config.settings import settings
+
+if TYPE_CHECKING:
+    from structlog.types import Processor
 
 
 def setup_logging() -> None:
@@ -32,15 +34,14 @@ def setup_logging() -> None:
 
     if settings.is_production:
         # Production: JSON output for log aggregation
-        processors: list[Processor] = shared_processors + [
+        processors: list[Processor] = [
+            *shared_processors,
             structlog.processors.format_exc_info,
             structlog.processors.JSONRenderer(),
         ]
     else:
         # Development: Human-readable console output
-        processors = shared_processors + [
-            structlog.dev.ConsoleRenderer(colors=True),
-        ]
+        processors = [*shared_processors, structlog.dev.ConsoleRenderer(colors=True)]
 
     # Configure structlog
     structlog.configure(

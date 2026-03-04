@@ -11,18 +11,21 @@ All runs are tracked in MLflow.
 
 from __future__ import annotations
 
+import contextlib
 import warnings
-from datetime import datetime, timezone
-from typing import Any, Literal
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
-import pandas as pd
 from sklearn.model_selection import TimeSeriesSplit
 from sklearn.preprocessing import StandardScaler
 
 from quantflow.config.constants import WALK_FORWARD_GAP, WALK_FORWARD_N_SPLITS
 from quantflow.config.logging import get_logger
 from quantflow.models.base import BaseQuantModel, ModelOutput
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 logger = get_logger(__name__)
 
@@ -77,7 +80,7 @@ def _fit_xgboost(
     params: dict[str, Any] | None = None,
 ) -> Any:
     """Fit an XGBoost regressor."""
-    import xgboost as xgb  # type: ignore[import]
+    import xgboost as xgb
 
     defaults = {
         "n_estimators": 300,
@@ -107,7 +110,7 @@ def _fit_lightgbm(
     params: dict[str, Any] | None = None,
 ) -> Any:
     """Fit a LightGBM regressor."""
-    import lightgbm as lgb  # type: ignore[import]
+    import lightgbm as lgb
 
     defaults = {
         "n_estimators": 300,
@@ -126,7 +129,7 @@ def _fit_lightgbm(
     }
     if params:
         defaults.update(params)
-    model = lgb.LGBMRegressor(**defaults)
+    model = lgb.LGBMRegressor(**defaults)  # type: ignore[arg-type]
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         model.fit(X_train, y_train)
@@ -139,7 +142,7 @@ def _fit_catboost(
     params: dict[str, Any] | None = None,
 ) -> Any:
     """Fit a CatBoost regressor."""
-    from catboost import CatBoostRegressor  # type: ignore[import]
+    from catboost import CatBoostRegressor
 
     defaults = {
         "iterations": 300,
@@ -179,8 +182,8 @@ def _optuna_tune_lightgbm(
     Returns:
         Best hyperparameter dict.
     """
+    import lightgbm as lgb
     import optuna
-    import lightgbm as lgb  # type: ignore[import]
 
     optuna.logging.set_verbosity(optuna.logging.WARNING)
 
@@ -206,13 +209,14 @@ def _optuna_tune_lightgbm(
         for train_idx, val_idx in tscv.split(X):
             if len(train_idx) < 100:
                 continue
-            model = lgb.LGBMRegressor(**params)
+            model = lgb.LGBMRegressor(**params)  # type: ignore[arg-type]
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
                 model.fit(X[train_idx], y[train_idx])
             pred = model.predict(X[val_idx])
             # IC: Spearman correlation between prediction and realised return
             from scipy.stats import spearmanr
+
             ic, _ = spearmanr(pred, y[val_idx])
             if np.isfinite(ic):
                 ic_scores.append(ic)
@@ -287,7 +291,7 @@ class GBTSignalModel(BaseQuantModel):
     # Fit
     # ------------------------------------------------------------------
 
-    def fit(self, data: pd.DataFrame) -> "GBTSignalModel":
+    def fit(self, data: pd.DataFrame) -> GBTSignalModel:
         """Fit GBT models on features derived from OHLCV data.
 
         Expects ``data`` to have a ``close`` column plus pre-computed
@@ -312,15 +316,11 @@ class GBTSignalModel(BaseQuantModel):
             # Assume data already contains feature columns (minus close)
             features = data.drop(columns=["close"], errors="ignore")
 
-        X, y, valid_idx = _build_xy(features, close, horizon=self.horizon)
-        self._feature_names = list(
-            features.columns if hasattr(features, "columns") else []
-        )
+        X, y, _valid_idx = _build_xy(features, close, horizon=self.horizon)
+        self._feature_names = list(features.columns if hasattr(features, "columns") else [])
 
         if len(X) < 60:
-            raise ValueError(
-                f"Insufficient training data for {self.symbol}: {len(X)} rows."
-            )
+            raise ValueError(f"Insufficient training data for {self.symbol}: {len(X)} rows.")
 
         self._vol_estimate = float(np.std(y))
 
@@ -331,9 +331,7 @@ class GBTSignalModel(BaseQuantModel):
                 symbol=self.symbol,
                 n_trials=self.n_optuna_trials,
             )
-            self._best_params = _optuna_tune_lightgbm(
-                X, y, n_trials=self.n_optuna_trials
-            )
+            self._best_params = _optuna_tune_lightgbm(X, y, n_trials=self.n_optuna_trials)
 
         # Fit requested frameworks
         frameworks_to_fit = (
@@ -406,11 +404,7 @@ class GBTSignalModel(BaseQuantModel):
             )
         else:
             # Predict from a neutral feature vector (zero-filled)
-            n_features = (
-                next(iter(self._models.values())).n_features_in_
-                if self._models
-                else 1
-            )
+            n_features = next(iter(self._models.values())).n_features_in_ if self._models else 1
             X_last = np.zeros((1, n_features))
 
         if X_last.shape[0] == 0:
@@ -447,13 +441,14 @@ class GBTSignalModel(BaseQuantModel):
             top_k = min(5, len(self._feature_names))
             top_idx = np.argsort(mean_abs_shap)[::-1][:top_k]
             shap_meta["top_features"] = {
-                self._feature_names[i]: round(float(mean_abs_shap[i]), 5)
-                for i in top_idx
+                self._feature_names[i]: round(float(mean_abs_shap[i]), 5) for i in top_idx
             }
 
         metadata: dict[str, Any] = {
             "frameworks": list(self._models.keys()),
-            "individual_forecasts": {fw: round(float(p), 6) for fw, p in zip(self._models.keys(), preds)},
+            "individual_forecasts": {
+                fw: round(float(p), 6) for fw, p in zip(self._models.keys(), preds, strict=False)
+            },
             "ic_mean": round(ic_mean, 4),
             "horizon_days": self.horizon,
             **shap_meta,
@@ -462,7 +457,7 @@ class GBTSignalModel(BaseQuantModel):
         return ModelOutput(
             model_name=self.model_name,
             symbol=self.symbol,
-            timestamp=datetime.now(tz=timezone.utc),
+            timestamp=datetime.now(tz=UTC),
             signal=signal,
             confidence=confidence,
             forecast_return=round(forecast_return, 6),
@@ -475,9 +470,7 @@ class GBTSignalModel(BaseQuantModel):
     # Private helpers
     # ------------------------------------------------------------------
 
-    def _compute_walk_forward_ic(
-        self, X: np.ndarray, y: np.ndarray
-    ) -> list[float]:
+    def _compute_walk_forward_ic(self, X: np.ndarray, y: np.ndarray) -> list[float]:
         """Compute IC on each walk-forward fold using the fitted models."""
         from scipy.stats import spearmanr
 
@@ -491,15 +484,15 @@ class GBTSignalModel(BaseQuantModel):
                 continue
             preds: list[float] = []
             for model in self._models.values():
-                try:
+                with contextlib.suppress(Exception):
                     preds.append(float(np.mean(model.predict(X[val_idx]))))
-                except Exception:
-                    pass
             if not preds:
                 continue
             ensemble_pred = np.array(
-                [float(np.mean([m.predict(X[val_idx])[i] for m in self._models.values()]))
-                 for i in range(len(val_idx))]
+                [
+                    float(np.mean([m.predict(X[val_idx])[i] for m in self._models.values()]))
+                    for i in range(len(val_idx))
+                ]
             )
             ic, _ = spearmanr(ensemble_pred, y[val_idx])
             if np.isfinite(ic):
@@ -509,11 +502,11 @@ class GBTSignalModel(BaseQuantModel):
     def _compute_shap(self, X: np.ndarray) -> None:
         """Compute SHAP values for the LightGBM model."""
         try:
-            import shap  # type: ignore[import]
+            import shap
 
             explainer = shap.TreeExplainer(self._models["lightgbm"])
             # Use a sample of at most 200 rows for speed
-            X_sample = X[-min(200, len(X)):]
+            X_sample = X[-min(200, len(X)) :]
             self._shap_values = explainer.shap_values(X_sample)
         except Exception as exc:
             logger.warning("SHAP computation failed", error=str(exc))
@@ -525,7 +518,7 @@ class GBTSignalModel(BaseQuantModel):
 
             mlflow.set_experiment(self.mlflow_experiment)
             with mlflow.start_run(
-                run_name=f"{self.model_name}_{self.symbol}_{datetime.now(tz=timezone.utc).strftime('%Y%m%d_%H%M%S')}"
+                run_name=f"{self.model_name}_{self.symbol}_{datetime.now(tz=UTC).strftime('%Y%m%d_%H%M%S')}"
             ):
                 mlflow.log_params(
                     {
@@ -549,7 +542,7 @@ class GBTSignalModel(BaseQuantModel):
         return ModelOutput(
             model_name=self.model_name,
             symbol=self.symbol,
-            timestamp=datetime.now(tz=timezone.utc),
+            timestamp=datetime.now(tz=UTC),
             signal=0.0,
             confidence=0.0,
             forecast_return=0.0,

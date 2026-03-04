@@ -106,9 +106,7 @@ class YFinanceFetcher(BaseDataFetcher):
                 actions=False,
             )
         except Exception as exc:
-            raise DataFetchError(
-                f"yfinance failed to fetch {symbol}: {exc}"
-            ) from exc
+            raise DataFetchError(f"yfinance failed to fetch {symbol}: {exc}") from exc
 
         if raw.empty:
             raise DataFetchError(
@@ -119,9 +117,7 @@ class YFinanceFetcher(BaseDataFetcher):
         df = self._normalise(raw)
         report: ValidationReport = await self.validate(df)
         if not report.is_valid:
-            raise DataQualityError(
-                f"Data quality check failed for {symbol}: {report.errors}"
-            )
+            raise DataQualityError(f"Data quality check failed for {symbol}: {report.errors}")
 
         return df
 
@@ -141,7 +137,7 @@ class YFinanceFetcher(BaseDataFetcher):
 
         self._logger.info("Fetching fundamentals from yfinance", symbol=symbol)
         try:
-            info: dict = yf.Ticker(symbol).info  # type: ignore[assignment]
+            info: dict = yf.Ticker(symbol).info
         except Exception as exc:
             raise DataFetchError(
                 f"yfinance failed to fetch fundamentals for {symbol}: {exc}"

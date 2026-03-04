@@ -29,16 +29,18 @@ References:
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
-import pandas as pd
 from scipy import stats as scipy_stats
 
 from quantflow.config.constants import TRADING_DAYS_PER_YEAR
 from quantflow.config.logging import get_logger
 from quantflow.models.base import BaseQuantModel, ModelOutput
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 logger = get_logger(__name__)
 
@@ -52,7 +54,7 @@ except ImportError:  # pragma: no cover
     _TORCH_AVAILABLE = False
 
 try:
-    import torchsde as _torchsde  # type: ignore[import-untyped]
+    import torchsde  # noqa: F401
 
     _TORCHSDE_AVAILABLE = True
 except ImportError:
@@ -82,9 +84,9 @@ if _TORCH_AVAILABLE:
                 nn.Linear(hidden_dim, 1),
             )
 
-        def forward(self, x: "torch.Tensor", t: "torch.Tensor") -> "torch.Tensor":
+        def forward(self, x: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
             t_expand = t.expand_as(x)
-            inp = torch.cat([x, t_expand], dim=-1)  # type: ignore[attr-defined]
+            inp = torch.cat([x, t_expand], dim=-1)
             return self.net(inp)
 
     class _DiffusionNet(nn.Module):
@@ -105,9 +107,9 @@ if _TORCH_AVAILABLE:
                 nn.Softplus(),  # Ensure positivity
             )
 
-        def forward(self, x: "torch.Tensor", t: "torch.Tensor") -> "torch.Tensor":
+        def forward(self, x: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
             t_expand = t.expand_as(x)
-            inp = torch.cat([x, t_expand], dim=-1)  # type: ignore[attr-defined]
+            inp = torch.cat([x, t_expand], dim=-1)
             return self.net(inp) + 1e-3  # small baseline to prevent zero diffusion
 
 
@@ -117,11 +119,11 @@ if _TORCH_AVAILABLE:
 
 
 def _em_log_likelihood(
-    drift_net: "torch.nn.Module",
-    diff_net: "torch.nn.Module",
-    x_path: "torch.Tensor",
+    drift_net: torch.nn.Module,
+    diff_net: torch.nn.Module,
+    x_path: torch.Tensor,
     dt: float,
-) -> "torch.Tensor":
+) -> torch.Tensor:
     """Euler-Maruyama log-likelihood of observed path.
 
     p(X_{t+dt} | X_t) = N(X_t + mu*dt, sigma^2*dt)
@@ -136,22 +138,22 @@ def _em_log_likelihood(
         Total log-likelihood (scalar tensor).
     """
     T = x_path.shape[0]
-    ll = torch.tensor(0.0)  # type: ignore[attr-defined]
+    ll = torch.tensor(0.0)
     for i in range(T - 1):
-        x_i = x_path[i: i + 1].unsqueeze(0)  # (1, 1)
-        t_i = torch.tensor([[i * dt]], dtype=torch.float32)  # type: ignore[attr-defined]
+        x_i = x_path[i : i + 1].unsqueeze(0)  # (1, 1)
+        t_i = torch.tensor([[i * dt]], dtype=torch.float32)
         mu = drift_net(x_i, t_i).squeeze()
         sig = diff_net(x_i, t_i).squeeze()
         x_next = x_path[i + 1]
         mean_next = x_path[i] + mu * dt
-        var = sig ** 2 * dt + 1e-8
-        ll += -0.5 * (torch.log(2 * torch.tensor(np.pi) * var) + (x_next - mean_next) ** 2 / var)  # type: ignore[attr-defined]
+        var = sig**2 * dt + 1e-8
+        ll += -0.5 * (torch.log(2 * torch.tensor(np.pi) * var) + (x_next - mean_next) ** 2 / var)
     return ll
 
 
 def _em_simulate(
-    drift_net: "torch.nn.Module",
-    diff_net: "torch.nn.Module",
+    drift_net: torch.nn.Module,
+    diff_net: torch.nn.Module,
     x0: float,
     n_paths: int,
     n_steps: int,
@@ -177,10 +179,10 @@ def _em_simulate(
 
     drift_net.eval()
     diff_net.eval()
-    with torch.no_grad():  # type: ignore[attr-defined]
+    with torch.no_grad():
         for i in range(n_steps):
-            x_t = torch.tensor(x.reshape(-1, 1), dtype=torch.float32)  # type: ignore[attr-defined]
-            t_t = torch.tensor([[i * dt]] * n_paths, dtype=torch.float32)  # type: ignore[attr-defined]
+            x_t = torch.tensor(x.reshape(-1, 1), dtype=torch.float32)
+            t_t = torch.tensor([[i * dt]] * n_paths, dtype=torch.float32)
             mu = drift_net(x_t, t_t).squeeze(1).numpy()
             sig = diff_net(x_t, t_t).squeeze(1).numpy()
             dw = rng.standard_normal(n_paths) * np.sqrt(dt)
@@ -239,7 +241,7 @@ class NeuralSDEModel(BaseQuantModel):
     # Public interface
     # ------------------------------------------------------------------
 
-    def fit(self, data: pd.DataFrame) -> "NeuralSDEModel":
+    def fit(self, data: pd.DataFrame) -> NeuralSDEModel:
         """Fit drift and diffusion networks on historical log-prices.
 
         Args:
@@ -261,15 +263,15 @@ class NeuralSDEModel(BaseQuantModel):
         self._x0 = float(log_prices[-1])
 
         if self._seed is not None:
-            torch.manual_seed(self._seed)  # type: ignore[attr-defined]
+            torch.manual_seed(self._seed)
 
         self._drift_net = _DriftNet(self._hidden_dim)
         self._diff_net = _DiffusionNet(self._hidden_dim)
 
         params = list(self._drift_net.parameters()) + list(self._diff_net.parameters())
-        opt = optim.Adam(params, lr=self._lr, weight_decay=1e-4)  # type: ignore[attr-defined]
+        opt = optim.Adam(params, lr=self._lr, weight_decay=1e-4)
 
-        x_path = torch.tensor(log_prices, dtype=torch.float32)  # type: ignore[attr-defined]
+        x_path = torch.tensor(log_prices, dtype=torch.float32)
 
         self._drift_net.train()
         self._diff_net.train()
@@ -281,7 +283,7 @@ class NeuralSDEModel(BaseQuantModel):
             kl = self._kl_weight * self._kl_regulariser(hist_vol)
             loss = -ll + kl
             loss.backward()
-            nn.utils.clip_grad_norm_(params, max_norm=1.0)  # type: ignore[attr-defined]
+            nn.utils.clip_grad_norm_(params, max_norm=1.0)
             opt.step()
 
         # Goodness-of-fit: KS test on simulated returns
@@ -314,15 +316,24 @@ class NeuralSDEModel(BaseQuantModel):
 
         # Simulate forward
         x_T = _em_simulate(
-            self._drift_net, self._diff_net,
-            x0, self._n_sim, self._horizon, self._dt, self._seed,
+            self._drift_net,
+            self._diff_net,
+            x0,
+            self._n_sim,
+            self._horizon,
+            self._dt,
+            self._seed,
         )
         sim_returns = x_T - x0  # log returns over horizon
 
         expected_ret = float(np.mean(sim_returns))
         expected_std = float(np.std(sim_returns))
 
-        ann_vol = float(np.std(np.diff(log_prices[-22:])) * np.sqrt(TRADING_DAYS_PER_YEAR)) if len(log_prices) >= 22 else 0.20
+        ann_vol = (
+            float(np.std(np.diff(log_prices[-22:])) * np.sqrt(TRADING_DAYS_PER_YEAR))
+            if len(log_prices) >= 22
+            else 0.20
+        )
         horizon_vol = max(expected_std, 1e-6)
         signal = self.normalise_signal(expected_ret / horizon_vol)
 
@@ -336,7 +347,7 @@ class NeuralSDEModel(BaseQuantModel):
         return ModelOutput(
             model_name=self.model_name,
             symbol=self.symbol,
-            timestamp=datetime.now(tz=timezone.utc),
+            timestamp=datetime.now(tz=UTC),
             signal=round(signal, 6),
             confidence=round(confidence, 6),
             forecast_return=round(expected_ret * (TRADING_DAYS_PER_YEAR / self._horizon), 6),
@@ -356,7 +367,7 @@ class NeuralSDEModel(BaseQuantModel):
     # Private helpers
     # ------------------------------------------------------------------
 
-    def _kl_regulariser(self, hist_vol: float) -> "torch.Tensor":
+    def _kl_regulariser(self, hist_vol: float) -> torch.Tensor:
         """Soft KL penalty keeping networks close to GBM prior.
 
         Args:
@@ -366,12 +377,12 @@ class NeuralSDEModel(BaseQuantModel):
             Scalar penalty tensor.
         """
         # Sample a dummy point
-        x_d = torch.zeros(1, 1)  # type: ignore[attr-defined]
-        t_d = torch.zeros(1, 1)  # type: ignore[attr-defined]
+        x_d = torch.zeros(1, 1)
+        t_d = torch.zeros(1, 1)
         mu_d = self._drift_net(x_d, t_d)
         sig_d = self._diff_net(x_d, t_d)
         # Penalty: drift near 0, diffusion near hist_vol
-        pen = mu_d ** 2 + (sig_d - hist_vol) ** 2
+        pen = mu_d**2 + (sig_d - hist_vol) ** 2
         return pen.mean()
 
     def _compute_ks(self, train_returns: np.ndarray) -> float:
@@ -387,8 +398,13 @@ class NeuralSDEModel(BaseQuantModel):
             return 0.5
         try:
             x_T = _em_simulate(
-                self._drift_net, self._diff_net,
-                0.0, 1_000, 1, self._dt, self._seed,
+                self._drift_net,
+                self._diff_net,
+                0.0,
+                1_000,
+                1,
+                self._dt,
+                self._seed,
             )
             ks, _ = scipy_stats.ks_2samp(train_returns[:1_000], x_T)
             return float(ks)
@@ -414,7 +430,7 @@ class NeuralSDEModel(BaseQuantModel):
         return ModelOutput(
             model_name=self.model_name,
             symbol=self.symbol,
-            timestamp=datetime.now(tz=timezone.utc),
+            timestamp=datetime.now(tz=UTC),
             signal=round(signal, 6),
             confidence=0.30,
             forecast_return=round(mu * TRADING_DAYS_PER_YEAR / self._horizon, 6),

@@ -12,15 +12,12 @@ and a contrarian flag at sentiment extremes.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any
+from datetime import UTC, datetime
 
 import numpy as np
-import pandas as pd
 
 from quantflow.agents.schemas import AgentOutput, AggregatedSentiment, RawDocument
 from quantflow.config.constants import (
-    SENTIMENT_DECAY_FACTOR,
     SENTIMENT_EXTREME_BEAR_THRESHOLD,
     SENTIMENT_EXTREME_BULL_THRESHOLD,
 )
@@ -31,8 +28,8 @@ logger = get_logger(__name__)
 _FINBERT_MODEL = "ProsusAI/finbert"
 _VADER_WEIGHT = 0.20
 _FINBERT_WEIGHT = 0.30
-_AGENT_WEIGHT = 0.50          # LLM agents combined weight
-_HISTORY_WINDOW_DAYS = 30     # Rolling window for z-score baseline
+_AGENT_WEIGHT = 0.50  # LLM agents combined weight
+_HISTORY_WINDOW_DAYS = 30  # Rolling window for z-score baseline
 
 
 # ---------------------------------------------------------------------------
@@ -50,7 +47,7 @@ def vader_sentiment(text: str) -> float:
         Compound sentiment in ``[-1.0, +1.0]``.
     """
     try:
-        from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer  # type: ignore[import]
+        from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
         sia = SentimentIntensityAnalyzer()
         scores = sia.polarity_scores(text)
@@ -96,7 +93,7 @@ def finbert_sentiment(texts: list[str], batch_size: int = 8) -> float:
     if not texts:
         return 0.0
     try:
-        from transformers import pipeline  # type: ignore[import]
+        from transformers import pipeline
 
         classifier = pipeline(
             "text-classification",
@@ -109,10 +106,7 @@ def finbert_sentiment(texts: list[str], batch_size: int = 8) -> float:
         results = classifier(truncated, batch_size=batch_size)
 
         label_map = {"positive": 1.0, "negative": -1.0, "neutral": 0.0}
-        scores = [
-            label_map.get(r["label"].lower(), 0.0) * r["score"]
-            for r in results
-        ]
+        scores = [label_map.get(r["label"].lower(), 0.0) * r["score"] for r in results]
         return float(np.mean(scores))
 
     except Exception as exc:
@@ -284,7 +278,7 @@ class SentimentAggregator:
         """
         from datetime import timedelta
 
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=UTC)
         self._history.append((now, score))
         cutoff = now - timedelta(days=_HISTORY_WINDOW_DAYS)
         self._history = [(t, s) for t, s in self._history if t >= cutoff]

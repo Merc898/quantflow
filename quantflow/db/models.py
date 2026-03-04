@@ -5,7 +5,6 @@ Optimized for TimescaleDB time-series storage.
 """
 
 from datetime import datetime
-from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import (
@@ -15,7 +14,6 @@ from sqlalchemy import (
     Float,
     Index,
     Integer,
-    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -176,9 +174,7 @@ class Recommendation(Base, TimestampMixin):
     models_used: Mapped[int] = mapped_column(Integer, default=0)
     models_available: Mapped[int] = mapped_column(Integer, default=0)
 
-    __table_args__ = (
-        Index("ix_recommendations_symbol_time", "symbol", "time", unique=True),
-    )
+    __table_args__ = (Index("ix_recommendations_symbol_time", "symbol", "time", unique=True),)
 
     def __repr__(self) -> str:
         return f"<Recommendation(symbol={self.symbol}, rec={self.recommendation})>"
@@ -266,9 +262,7 @@ class AgentOutput(Base, TimestampMixin):
     raw_sources: Mapped[list[str]] = mapped_column(JSONB, default=list)
     model_metadata: Mapped[dict[str, Any]] = mapped_column("metadata", JSONB, default=dict)
 
-    __table_args__ = (
-        Index("ix_agent_outputs_symbol_time", "symbol", "time"),
-    )
+    __table_args__ = (Index("ix_agent_outputs_symbol_time", "symbol", "time"),)
 
     def __repr__(self) -> str:
         return f"<AgentOutput(symbol={self.symbol}, agent={self.agent_name})>"

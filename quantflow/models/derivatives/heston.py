@@ -17,8 +17,7 @@ Signal logic:
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any
+from datetime import UTC, datetime
 
 import numpy as np
 import pandas as pd
@@ -88,7 +87,7 @@ class HestonModel(BaseQuantModel):
     # Public interface
     # ------------------------------------------------------------------
 
-    def fit(self, data: pd.DataFrame) -> "HestonModel":
+    def fit(self, data: pd.DataFrame) -> HestonModel:
         """Fit Heston parameters from OHLCV data.
 
         Args:
@@ -127,16 +126,15 @@ class HestonModel(BaseQuantModel):
 
         log_returns = np.log(data["close"] / data["close"].shift(1)).dropna()
 
-        sim_returns, sim_ann_vol = self._simulate_paths(
-            self._params, self._n_paths, self._horizon
-        )
+        sim_returns, sim_ann_vol = self._simulate_paths(self._params, self._n_paths, self._horizon)
 
         expected_ret_21d = float(np.mean(sim_returns))
         expected_ann_vol = float(np.mean(sim_ann_vol))
 
         # Drift signal: Sharpe-like ratio from simulated paths
         drift_signal = self.normalise_signal(
-            expected_ret_21d / max(expected_ann_vol / np.sqrt(TRADING_DAYS_PER_YEAR / self._horizon), 1e-6)
+            expected_ret_21d
+            / max(expected_ann_vol / np.sqrt(TRADING_DAYS_PER_YEAR / self._horizon), 1e-6)
         )
 
         # Vol mean-reversion signal
@@ -154,14 +152,13 @@ class HestonModel(BaseQuantModel):
         # Regime tag
         recent_vol = float(log_returns.iloc[-21:].std() * np.sqrt(TRADING_DAYS_PER_YEAR))
         regime = (
-            "HIGH_VOL" if recent_vol > 0.25
-            else ("LOW_VOL" if recent_vol < 0.12 else "MEDIUM_VOL")
+            "HIGH_VOL" if recent_vol > 0.25 else ("LOW_VOL" if recent_vol < 0.12 else "MEDIUM_VOL")
         )
 
         return ModelOutput(
             model_name=self.model_name,
             symbol=self.symbol,
-            timestamp=datetime.now(tz=timezone.utc),
+            timestamp=datetime.now(tz=UTC),
             signal=round(combined, 6),
             confidence=round(confidence, 6),
             forecast_return=round(expected_ret_21d * (TRADING_DAYS_PER_YEAR / self._horizon), 6),
@@ -264,13 +261,17 @@ class HestonModel(BaseQuantModel):
         dt = 1.0 / TRADING_DAYS_PER_YEAR
 
         kappa, theta, xi, rho, v0, r = (
-            params.kappa, params.theta, params.xi,
-            params.rho, params.v0, params.r,
+            params.kappa,
+            params.theta,
+            params.xi,
+            params.rho,
+            params.v0,
+            params.r,
         )
         sqrt_dt = np.sqrt(dt)
 
         # Cholesky for correlated Brownians
-        chol = np.array([[1.0, 0.0], [rho, np.sqrt(max(1.0 - rho ** 2, 0.0))]])
+        chol = np.array([[1.0, 0.0], [rho, np.sqrt(max(1.0 - rho**2, 0.0))]])
 
         log_s = np.zeros(n_paths)
         v = np.full(n_paths, v0)

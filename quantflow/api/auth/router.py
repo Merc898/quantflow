@@ -9,7 +9,6 @@ from quantflow.api.auth.dependencies import CurrentUser, DbDep, require_tier
 from quantflow.api.auth.jwt import (
     create_access_token,
     generate_api_key,
-    hash_api_key,
     hash_password,
     verify_password,
 )
@@ -213,9 +212,7 @@ async def revoke_api_key(
     db: DbDep,
 ) -> None:
     """Deactivate an API key by ID."""
-    result = await db.execute(
-        select(ApiKey).where(ApiKey.id == key_id, ApiKey.user_id == user.id)
-    )
+    result = await db.execute(select(ApiKey).where(ApiKey.id == key_id, ApiKey.user_id == user.id))
     api_key = result.scalar_one_or_none()
     if api_key is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="API key not found.")

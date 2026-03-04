@@ -9,8 +9,6 @@ Reference: Black & Litterman (1992), He & Litterman (1999).
 
 from __future__ import annotations
 
-from typing import Any
-
 import numpy as np
 import pandas as pd
 
@@ -77,9 +75,7 @@ class BlackLittermanOptimizer:
             ValueError: If fewer than ``_MIN_OBSERVATIONS`` rows.
         """
         if len(returns) < _MIN_OBSERVATIONS:
-            raise ValueError(
-                f"Need at least {_MIN_OBSERVATIONS} observations, got {len(returns)}"
-            )
+            raise ValueError(f"Need at least {_MIN_OBSERVATIONS} observations, got {len(returns)}")
 
         # Align assets
         common = [a for a in returns.columns if a in market_weights.index]
@@ -98,9 +94,7 @@ class BlackLittermanOptimizer:
         cov_annual = cov_daily * TRADING_DAYS_PER_YEAR
 
         # Market weights (aligned and normalised)
-        w_mkt = np.array(
-            [float(market_weights.get(a, 1.0 / N)) for a in assets], dtype=np.float64
-        )
+        w_mkt = np.array([float(market_weights.get(a, 1.0 / N)) for a in assets], dtype=np.float64)
         w_mkt = w_mkt / w_mkt.sum()
 
         # --- Step 1: Equilibrium returns ---
@@ -112,11 +106,9 @@ class BlackLittermanOptimizer:
             mu_bl = pi
         else:
             if view_confidences is None:
-                view_confidences = {a: 0.5 for a in signal_views}
+                view_confidences = dict.fromkeys(signal_views, 0.5)
 
-            P, Q, Omega = self._build_views(
-                assets, cov_annual, signal_views, view_confidences
-            )
+            P, Q, Omega = self._build_views(assets, cov_annual, signal_views, view_confidences)
             # --- Step 3: Posterior ---
             mu_bl, _ = self._posterior(pi, cov_annual, P, Q, Omega)
 

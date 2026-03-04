@@ -6,7 +6,7 @@ and macro analysis.  Full analysis requires Premium subscription.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, status
@@ -182,7 +182,7 @@ async def get_news(
             detail="Free tier is limited to 7 days of news history.",
         )
 
-    since = datetime.now(tz=timezone.utc) - timedelta(days=days)
+    since = datetime.now(tz=UTC) - timedelta(days=days)
     result = await db.execute(
         select(AgentOutput)
         .where(AgentOutput.symbol == symbol, AgentOutput.time >= since)
@@ -223,7 +223,7 @@ async def get_macro_report(
     Requires Premium subscription.
     """
     macro_symbols = ["SPY", "QQQ", "TLT", "GLD"]
-    since = datetime.now(tz=timezone.utc) - timedelta(days=3)
+    since = datetime.now(tz=UTC) - timedelta(days=3)
 
     result = await db.execute(
         select(AgentOutput)
@@ -239,7 +239,7 @@ async def get_macro_report(
     if not rows:
         # Return neutral placeholder when no data available
         return MacroReport(
-            generated_at=datetime.now(tz=timezone.utc),
+            generated_at=datetime.now(tz=UTC),
             market_regime="UNKNOWN",
             macro_sentiment=0.0,
             key_themes=["Insufficient data — macro report refreshes every 4 hours."],
@@ -262,7 +262,7 @@ async def get_macro_report(
         regime = "NEUTRAL"
 
     return MacroReport(
-        generated_at=datetime.now(tz=timezone.utc),
+        generated_at=datetime.now(tz=UTC),
         market_regime=regime,
         macro_sentiment=round(avg_sentiment, 4),
         key_themes=list(dict.fromkeys(all_events))[:5],

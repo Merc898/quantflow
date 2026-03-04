@@ -8,9 +8,7 @@ Returns raw :class:`RawDocument` objects consumed by the agent pipeline.
 from __future__ import annotations
 
 import re
-from datetime import datetime, timezone
-from typing import Any
-from urllib.parse import urljoin, urlparse
+from datetime import UTC, datetime
 
 import httpx
 
@@ -31,9 +29,7 @@ _STOCKTWITS_URL = "https://api.stocktwits.com/api/2/streams/symbol/{symbol}.json
 
 # User-Agent header to avoid being blocked
 _HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (compatible; QuantFlowBot/1.0; +https://quantflow.io/bot)"
-    ),
+    "User-Agent": ("Mozilla/5.0 (compatible; QuantFlowBot/1.0; +https://quantflow.io/bot)"),
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
 }
 
@@ -121,7 +117,7 @@ class WebScraperAgent:
                         "restrict_sr": "1",
                         "t": "day",
                     }
-                    resp = await client.get(url, params=params)
+                    resp = await client.get(url, params=params)  # type: ignore[arg-type]
                     resp.raise_for_status()
                     data = resp.json()
                     posts = data.get("data", {}).get("children", [])
@@ -146,7 +142,7 @@ class WebScraperAgent:
                                 url=url_post,
                                 title=title,
                                 text=text[:3000],
-                                timestamp=datetime.now(tz=timezone.utc),
+                                timestamp=datetime.now(tz=UTC),
                                 symbol=symbol,
                                 relevance_score=relevance,
                             )
@@ -179,14 +175,13 @@ class WebScraperAgent:
         """
         from datetime import timedelta
 
-        start = (datetime.now(tz=timezone.utc) - timedelta(days=90)).strftime("%Y-%m-%d")
-        search_url = _EDGAR_SEARCH.format(
-            symbol=symbol, start=start, form=form_type
-        )
+        start = (datetime.now(tz=UTC) - timedelta(days=90)).strftime("%Y-%m-%d")
+        search_url = _EDGAR_SEARCH.format(symbol=symbol, start=start, form=form_type)
 
         docs: list[RawDocument] = []
         async with httpx.AsyncClient(
-            timeout=self._timeout, headers={**_HEADERS, "User-Agent": "QuantFlow/1.0 contact@quantflow.io"},
+            timeout=self._timeout,
+            headers={**_HEADERS, "User-Agent": "QuantFlow/1.0 contact@quantflow.io"},
             follow_redirects=True,
         ) as client:
             try:
@@ -199,7 +194,7 @@ class WebScraperAgent:
                     file_date = src.get("file_date", "")
                     display_names = src.get("display_names", [])
                     entity = display_names[0].get("name", symbol) if display_names else symbol
-                    doc_url = _EDGAR_BASE + src.get("file_num", "")
+                    _EDGAR_BASE + src.get("file_num", "")
 
                     docs.append(
                         RawDocument(
@@ -207,8 +202,8 @@ class WebScraperAgent:
                             url=f"{_EDGAR_BASE}/cgi-bin/browse-edgar?action=getcompany&CIK={symbol}&type={form_type}",
                             title=f"{form_type} filing — {entity} ({file_date})",
                             text=f"Filing type: {form_type}. Entity: {entity}. Date: {file_date}. "
-                                 f"Ticker: {symbol}. [Full filing available at SEC EDGAR]",
-                            timestamp=datetime.now(tz=timezone.utc),
+                            f"Ticker: {symbol}. [Full filing available at SEC EDGAR]",
+                            timestamp=datetime.now(tz=UTC),
                             symbol=symbol,
                             relevance_score=0.9,
                         )
@@ -287,7 +282,6 @@ class WebScraperAgent:
             resp.raise_for_status()
 
         root = ET.fromstring(resp.text)
-        ns = {"": "http://www.w3.org/2005/Atom"}
 
         docs: list[RawDocument] = []
         # Try Atom first, then RSS
@@ -311,7 +305,7 @@ class WebScraperAgent:
                     url=link or url,
                     title=title,
                     text=text[:2000],
-                    timestamp=datetime.now(tz=timezone.utc),
+                    timestamp=datetime.now(tz=UTC),
                     symbol=symbol,
                     relevance_score=0.75,
                 )
@@ -355,7 +349,7 @@ class WebScraperAgent:
                     url=f"https://stocktwits.com/symbol/{symbol}?m={msg_id}",
                     title=body[:80],
                     text=body[:500],
-                    timestamp=datetime.now(tz=timezone.utc),
+                    timestamp=datetime.now(tz=UTC),
                     symbol=symbol,
                     relevance_score=relevance,
                 )

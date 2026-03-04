@@ -6,16 +6,18 @@ testing to switch to VECM when series are cointegrated.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
-import pandas as pd
 from statsmodels.tsa.api import VAR
 from statsmodels.tsa.vector_ar.vecm import VECM, coint_johansen
 
 from quantflow.config.logging import get_logger
 from quantflow.models.base import BaseQuantModel, ModelOutput
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 logger = get_logger(__name__)
 
@@ -67,7 +69,7 @@ class VARModel(BaseQuantModel):
     # Fit
     # ------------------------------------------------------------------
 
-    def fit(self, data: pd.DataFrame) -> "VARModel":
+    def fit(self, data: pd.DataFrame) -> VARModel:
         """Fit VAR or VECM on a multivariate log-return DataFrame.
 
         The input DataFrame should contain multiple return series.
@@ -152,7 +154,7 @@ class VARModel(BaseQuantModel):
         return ModelOutput(
             model_name=self.model_name,
             symbol=self.symbol,
-            timestamp=datetime.now(tz=timezone.utc),
+            timestamp=datetime.now(tz=UTC),
             signal=signal,
             confidence=confidence,
             forecast_return=round(forecast_return, 6),
@@ -221,7 +223,7 @@ class VARModel(BaseQuantModel):
         return ModelOutput(
             model_name=self.model_name,
             symbol=self.symbol,
-            timestamp=datetime.now(tz=timezone.utc),
+            timestamp=datetime.now(tz=UTC),
             signal=0.0,
             confidence=0.0,
             forecast_return=0.0,

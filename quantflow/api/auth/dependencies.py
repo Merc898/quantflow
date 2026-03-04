@@ -10,7 +10,7 @@ Provides:
 
 from __future__ import annotations
 
-from typing import Annotated, AsyncGenerator, Callable
+from typing import TYPE_CHECKING, Annotated
 
 from fastapi import Depends, HTTPException, Request, Security, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -28,6 +28,11 @@ from quantflow.config.constants import (
 from quantflow.config.logging import get_logger
 from quantflow.db.engine import AsyncSessionLocal
 from quantflow.db.models import ApiKey, User
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
+
+    from fastapi.params import Depends as DependsClass
 
 logger = get_logger(__name__)
 
@@ -195,7 +200,7 @@ OptionalUser = Annotated[User | None, Depends(get_optional_user)]
 # ---------------------------------------------------------------------------
 
 
-def require_tier(min_tier: str) -> Callable:
+def require_tier(min_tier: str) -> DependsClass:
     """Dependency factory: enforce a minimum subscription tier.
 
     Args:

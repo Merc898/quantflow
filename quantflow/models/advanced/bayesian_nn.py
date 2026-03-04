@@ -17,7 +17,7 @@ The predictive uncertainty is mapped to a confidence modifier:
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, Literal
 
 import numpy as np
@@ -70,7 +70,7 @@ if _TORCH_AVAILABLE:
                 nn.Linear(hidden_dim, 1),
             )
 
-        def forward(self, x: "torch.Tensor") -> "torch.Tensor":
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
             return self.net(x).squeeze(-1)
 
 
@@ -162,7 +162,7 @@ class BayesianNNModel(BaseQuantModel):
     # Public interface
     # ------------------------------------------------------------------
 
-    def fit(self, data: pd.DataFrame) -> "BayesianNNModel":
+    def fit(self, data: pd.DataFrame) -> BayesianNNModel:
         """Train Bayesian network(s) on historical data.
 
         Args:
@@ -180,8 +180,7 @@ class BayesianNNModel(BaseQuantModel):
             raise ValueError(f"BayesianNNModel requires ≥63 observations; got {len(log_returns)}")
 
         X = _make_features(log_returns)
-        y = (log_returns.shift(-self._horizon).reindex(log_returns.index)
-             .to_numpy(dtype=np.float32))
+        y = log_returns.shift(-self._horizon).reindex(log_returns.index).to_numpy(dtype=np.float32)
 
         # Align
         valid = ~np.isnan(y) & np.all(np.isfinite(X), axis=1)
@@ -232,7 +231,7 @@ class BayesianNNModel(BaseQuantModel):
         X_full = _make_features(log_returns)
         assert self._feature_mean is not None and self._feature_std is not None
         X_norm = (X_full - self._feature_mean) / self._feature_std
-        x_last = torch.tensor(X_norm[-1:], dtype=torch.float32)  # type: ignore[name-defined]
+        x_last = torch.tensor(X_norm[-1:], dtype=torch.float32)
 
         if self._method == "mc_dropout":
             pred_mean, pred_std = self._mc_dropout_predict(self._networks[0], x_last)
@@ -253,9 +252,7 @@ class BayesianNNModel(BaseQuantModel):
         signal = self.normalise_signal(pred_mean / max(horizon_vol, 1e-6))
 
         # Confidence: base 0.60, penalised by uncertainty
-        unc_penalty = {
-            "LOW": 0.0, "MEDIUM": 0.10, "HIGH": 0.25
-        }.get(unc_level, 0.10)
+        unc_penalty = {"LOW": 0.0, "MEDIUM": 0.10, "HIGH": 0.25}.get(unc_level, 0.10)
         confidence = float(np.clip(0.60 - unc_penalty, 0.20, 0.80))
 
         regime = f"UNCERTAINTY_{unc_level}"
@@ -263,7 +260,7 @@ class BayesianNNModel(BaseQuantModel):
         return ModelOutput(
             model_name=self.model_name,
             symbol=self.symbol,
-            timestamp=datetime.now(tz=timezone.utc),
+            timestamp=datetime.now(tz=UTC),
             signal=round(signal, 6),
             confidence=round(confidence, 6),
             forecast_return=round(float(pred_mean) * (TRADING_DAYS_PER_YEAR / self._horizon), 6),
@@ -287,7 +284,7 @@ class BayesianNNModel(BaseQuantModel):
         X: np.ndarray,
         y: np.ndarray,
         seed: int | None,
-    ) -> "torch.nn.Module":
+    ) -> torch.nn.Module:
         """Train one MLP network.
 
         Args:
@@ -299,18 +296,18 @@ class BayesianNNModel(BaseQuantModel):
             Trained PyTorch module.
         """
         if seed is not None:
-            torch.manual_seed(seed)  # type: ignore[attr-defined]
+            torch.manual_seed(seed)
 
         net = _BayesianMLP(
             input_dim=X.shape[1],
             hidden_dim=self._hidden_dim,
             dropout_p=self._dropout_p,
         )
-        opt = optim.Adam(net.parameters(), lr=self._lr, weight_decay=1e-4)  # type: ignore[attr-defined]
-        criterion = nn.MSELoss()  # type: ignore[attr-defined]
+        opt = optim.Adam(net.parameters(), lr=self._lr, weight_decay=1e-4)
+        criterion = nn.MSELoss()
 
-        X_t = torch.tensor(X, dtype=torch.float32)  # type: ignore[attr-defined]
-        y_t = torch.tensor(y, dtype=torch.float32)  # type: ignore[attr-defined]
+        X_t = torch.tensor(X, dtype=torch.float32)
+        y_t = torch.tensor(y, dtype=torch.float32)
 
         net.train()
         for _ in range(self._n_epochs):
@@ -318,7 +315,7 @@ class BayesianNNModel(BaseQuantModel):
             pred = net(X_t)
             loss = criterion(pred, y_t)
             loss.backward()
-            nn.utils.clip_grad_norm_(net.parameters(), max_norm=1.0)  # type: ignore[attr-defined]
+            nn.utils.clip_grad_norm_(net.parameters(), max_norm=1.0)
             opt.step()
 
         return net
@@ -329,8 +326,8 @@ class BayesianNNModel(BaseQuantModel):
 
     def _mc_dropout_predict(
         self,
-        net: "torch.nn.Module",
-        x: "torch.Tensor",
+        net: torch.nn.Module,
+        x: torch.Tensor,
     ) -> tuple[float, float]:
         """Run MC Dropout inference.
 
@@ -342,16 +339,14 @@ class BayesianNNModel(BaseQuantModel):
             Tuple of (mean_prediction, std_prediction).
         """
         net.train()  # Keep dropout active
-        with torch.no_grad():  # type: ignore[attr-defined]
-            preds = torch.stack(  # type: ignore[attr-defined]
-                [net(x) for _ in range(self._n_mc)]
-            ).squeeze().numpy()
+        with torch.no_grad():
+            preds = torch.stack([net(x) for _ in range(self._n_mc)]).squeeze().numpy()
         return float(preds.mean()), float(preds.std())
 
     @staticmethod
     def _ensemble_predict(
-        networks: list["torch.nn.Module"],
-        x: "torch.Tensor",
+        networks: list[torch.nn.Module],
+        x: torch.Tensor,
     ) -> tuple[float, float]:
         """Aggregate predictions across ensemble members.
 
@@ -365,7 +360,7 @@ class BayesianNNModel(BaseQuantModel):
         means = []
         for net in networks:
             net.eval()
-            with torch.no_grad():  # type: ignore[attr-defined]
+            with torch.no_grad():
                 pred = net(x).item()
             means.append(pred)
         return float(np.mean(means)), float(np.std(means))
@@ -409,13 +404,15 @@ class BayesianNNModel(BaseQuantModel):
     def _fallback_predict(self, data: pd.DataFrame) -> ModelOutput:
         """Predict using simple linear model."""
         log_returns = np.log(data["close"] / data["close"].shift(1)).dropna()
-        recent_ret = float(log_returns.iloc[-self._horizon:].mean() * self._horizon)
+        recent_ret = float(log_returns.iloc[-self._horizon :].mean() * self._horizon)
         ann_vol = float(log_returns.std() * np.sqrt(TRADING_DAYS_PER_YEAR))
-        signal = self.normalise_signal(recent_ret / max(ann_vol / np.sqrt(TRADING_DAYS_PER_YEAR / self._horizon), 1e-6))
+        signal = self.normalise_signal(
+            recent_ret / max(ann_vol / np.sqrt(TRADING_DAYS_PER_YEAR / self._horizon), 1e-6)
+        )
         return ModelOutput(
             model_name=self.model_name,
             symbol=self.symbol,
-            timestamp=datetime.now(tz=timezone.utc),
+            timestamp=datetime.now(tz=UTC),
             signal=round(signal, 6),
             confidence=0.30,
             forecast_return=round(recent_ret * (TRADING_DAYS_PER_YEAR / self._horizon), 6),

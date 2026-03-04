@@ -18,22 +18,24 @@ Branching ratio:  n* = alpha / beta  (must be < 1 for stability)
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 import numpy as np
-import pandas as pd
 from scipy.optimize import minimize
 
 from quantflow.config.constants import TRADING_DAYS_PER_YEAR
 from quantflow.config.logging import get_logger
 from quantflow.models.base import BaseQuantModel, ModelOutput
 
+if TYPE_CHECKING:
+    import pandas as pd
+
 logger = get_logger(__name__)
 
-_MIN_EVENTS = 10          # minimum events to fit a stable Hawkes process
-_EVENT_THRESHOLD = 1.5   # multiples of rolling std to define an event
-_ROLLING_WINDOW = 63      # window for rolling std estimation
+_MIN_EVENTS = 10  # minimum events to fit a stable Hawkes process
+_EVENT_THRESHOLD = 1.5  # multiples of rolling std to define an event
+_ROLLING_WINDOW = 63  # window for rolling std estimation
 
 
 # ---------------------------------------------------------------------------
@@ -185,7 +187,7 @@ class HawkesModel(BaseQuantModel):
     # Public interface
     # ------------------------------------------------------------------
 
-    def fit(self, data: pd.DataFrame) -> "HawkesModel":
+    def fit(self, data: pd.DataFrame) -> HawkesModel:
         """Fit Hawkes processes for upside and downside events.
 
         Args:
@@ -268,7 +270,7 @@ class HawkesModel(BaseQuantModel):
         return ModelOutput(
             model_name=self.model_name,
             symbol=self.symbol,
-            timestamp=datetime.now(tz=timezone.utc),
+            timestamp=datetime.now(tz=UTC),
             signal=round(signal, 6),
             confidence=round(confidence, 6),
             forecast_return=0.0,

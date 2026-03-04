@@ -6,11 +6,12 @@ are defined here so every module shares a single source of truth.
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field, field_validator
 
+if TYPE_CHECKING:
+    from datetime import datetime
 
 # ---------------------------------------------------------------------------
 # Raw scraper output
@@ -261,9 +262,7 @@ class ValidatedIntelligenceReport(BaseModel):
 # Sentiment aggregator output
 # ---------------------------------------------------------------------------
 
-_SENTIMENT_REGIMES = frozenset(
-    {"EXTREME_BEAR", "BEAR", "NEUTRAL", "BULL", "EXTREME_BULL"}
-)
+_SENTIMENT_REGIMES = frozenset({"EXTREME_BEAR", "BEAR", "NEUTRAL", "BULL", "EXTREME_BULL"})
 
 
 class AggregatedSentiment(BaseModel):

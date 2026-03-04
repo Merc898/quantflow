@@ -10,15 +10,13 @@ ModelOutput signal for use by the signal fusion engine.
 from __future__ import annotations
 
 import warnings
-from datetime import datetime, timezone
-from typing import Any, Literal
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
-import pandas as pd
 
 from quantflow.config.constants import (
     MAX_POSITION_SIZE,
-    TARGET_ANNUAL_VOLATILITY,
     TRADING_DAYS_PER_YEAR,
 )
 from quantflow.config.logging import get_logger
@@ -28,10 +26,10 @@ logger = get_logger(__name__)
 
 DRLAlgorithm = Literal["PPO", "SAC", "DQN"]
 
-_N_TRAINING_STEPS = 50_000   # total env steps (reduce for speed; scale up in production)
-_TRANSACTION_COST_BPS = 10   # 10 basis points per trade
+_N_TRAINING_STEPS = 50_000  # total env steps (reduce for speed; scale up in production)
+_TRANSACTION_COST_BPS = 10  # 10 basis points per trade
 _MAX_WEIGHT = MAX_POSITION_SIZE
-_REWARD_LAMBDA = 0.5         # Sharpe penalty coefficient
+_REWARD_LAMBDA = 0.5  # Sharpe penalty coefficient
 
 
 # ---------------------------------------------------------------------------
@@ -40,6 +38,9 @@ _REWARD_LAMBDA = 0.5         # Sharpe penalty coefficient
 
 
 import gymnasium as _gymnasium_base  # noqa: E402 — required for class definition
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 
 class PortfolioEnv(_gymnasium_base.Env):
@@ -118,9 +119,7 @@ class PortfolioEnv(_gymnasium_base.Env):
         self._returns_history = []
         return self.features[0], {}
 
-    def step(
-        self, action: np.ndarray
-    ) -> tuple[np.ndarray, float, bool, bool, dict]:
+    def step(self, action: np.ndarray) -> tuple[np.ndarray, float, bool, bool, dict]:
         """Take one environment step.
 
         Args:
@@ -154,7 +153,7 @@ class PortfolioEnv(_gymnasium_base.Env):
         next_obs = self.features[min(self._t, self.n_steps - 1)]
         return next_obs, reward, done, False, {"weight": weight, "ret": ret}
 
-    def render(self) -> None:  # noqa: D401
+    def render(self) -> None:
         """No-op render (not used)."""
 
 
@@ -175,9 +174,7 @@ class DiscretePortfolioEnv(PortfolioEnv):
         super().__init__(features, returns, **kwargs)
         self.action_space = _gymnasium_base.spaces.Discrete(len(self._WEIGHTS))
 
-    def step(
-        self, action: int | np.ndarray
-    ) -> tuple[np.ndarray, float, bool, bool, dict]:
+    def step(self, action: int | np.ndarray) -> tuple[np.ndarray, float, bool, bool, dict]:
         idx = int(action) if not isinstance(action, np.ndarray) else int(action.item())
         weight_arr = np.array([self._WEIGHTS[idx]], dtype=np.float32)
         return super().step(weight_arr)
@@ -235,7 +232,7 @@ class DRLPortfolioAgent(BaseQuantModel):
     # Fit
     # ------------------------------------------------------------------
 
-    def fit(self, data: pd.DataFrame) -> "DRLPortfolioAgent":
+    def fit(self, data: pd.DataFrame) -> DRLPortfolioAgent:
         """Train the RL agent on historical feature/return data.
 
         Args:
@@ -258,7 +255,7 @@ class DRLPortfolioAgent(BaseQuantModel):
         )
 
         # Use 1-day return as the immediate reward return
-        X_raw, y_raw, valid_idx = _build_xy(features, close, horizon=1)
+        X_raw, y_raw, _valid_idx = _build_xy(features, close, horizon=1)
         if len(X_raw) < 100:
             raise ValueError("Insufficient data for DRL training.")
 
@@ -277,9 +274,7 @@ class DRLPortfolioAgent(BaseQuantModel):
         if self.algorithm == "DQN":
             env = DiscretePortfolioEnv(X_train, ret_train, allow_shorting=False)
         else:
-            env = PortfolioEnv(
-                X_train, ret_train, allow_shorting=self.allow_shorting
-            )
+            env = PortfolioEnv(X_train, ret_train, allow_shorting=self.allow_shorting)  # type: ignore[assignment]
         self._env = env
 
         agent = self._build_agent(env)
@@ -358,7 +353,7 @@ class DRLPortfolioAgent(BaseQuantModel):
         return ModelOutput(
             model_name=self.model_name,
             symbol=self.symbol,
-            timestamp=datetime.now(tz=timezone.utc),
+            timestamp=datetime.now(tz=UTC),
             signal=signal,
             confidence=confidence,
             forecast_return=weight * self._vol_estimate,
@@ -385,16 +380,17 @@ class DRLPortfolioAgent(BaseQuantModel):
         """
         policy = "MlpPolicy"
         if self.algorithm == "PPO":
-            from stable_baselines3 import PPO  # type: ignore[import]
+            from stable_baselines3 import PPO
 
-            return PPO(policy, env, verbose=0, seed=42,
-                       learning_rate=3e-4, n_steps=512, batch_size=64)
+            return PPO(
+                policy, env, verbose=0, seed=42, learning_rate=3e-4, n_steps=512, batch_size=64
+            )
         elif self.algorithm == "SAC":
-            from stable_baselines3 import SAC  # type: ignore[import]
+            from stable_baselines3 import SAC
 
             return SAC(policy, env, verbose=0, seed=42, learning_rate=3e-4)
         else:  # DQN
-            from stable_baselines3 import DQN  # type: ignore[import]
+            from stable_baselines3 import DQN
 
             return DQN(policy, env, verbose=0, seed=42, learning_rate=1e-4)
 
@@ -430,12 +426,14 @@ class DRLPortfolioAgent(BaseQuantModel):
 
             mlflow.set_experiment(self.mlflow_experiment)
             with mlflow.start_run(run_name=f"DRL_{self.algorithm}_{self.symbol}"):
-                mlflow.log_params({
-                    "algorithm": self.algorithm,
-                    "symbol": self.symbol,
-                    "n_training_steps": self.n_training_steps,
-                    "allow_shorting": self.allow_shorting,
-                })
+                mlflow.log_params(
+                    {
+                        "algorithm": self.algorithm,
+                        "symbol": self.symbol,
+                        "n_training_steps": self.n_training_steps,
+                        "allow_shorting": self.allow_shorting,
+                    }
+                )
                 mlflow.log_metrics({"train_sharpe": self._train_sharpe})
         except Exception as exc:
             logger.warning("MLflow logging failed", error=str(exc))
@@ -444,7 +442,7 @@ class DRLPortfolioAgent(BaseQuantModel):
         return ModelOutput(
             model_name=self.model_name,
             symbol=self.symbol,
-            timestamp=datetime.now(tz=timezone.utc),
+            timestamp=datetime.now(tz=UTC),
             signal=0.0,
             confidence=0.0,
             forecast_return=0.0,

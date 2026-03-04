@@ -18,11 +18,9 @@ Test structure
 
 from __future__ import annotations
 
-import asyncio
 import tempfile
-from datetime import date, timedelta
+from datetime import date
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import numpy as np
 import pandas as pd
@@ -32,7 +30,6 @@ from quantflow.backtest.engine import (
     BacktestConfig,
     BacktestEngine,
     BacktestResult,
-    BaseStrategy,
     PerformanceMetrics,
     QuantFlowStrategy,
     Trade,
@@ -41,7 +38,6 @@ from quantflow.backtest.engine import (
     compute_performance_metrics,
 )
 from quantflow.backtest.report import generate_pdf_report
-
 
 # ---------------------------------------------------------------------------
 # Shared fixtures
@@ -155,6 +151,7 @@ class TestBacktestConfig:
 
     def test_initial_capital_positive(self) -> None:
         from pydantic import ValidationError
+
         with pytest.raises(ValidationError):
             BacktestConfig(
                 start_date=date(2020, 1, 1),
@@ -164,6 +161,7 @@ class TestBacktestConfig:
 
     def test_max_position_size_le_one(self) -> None:
         from pydantic import ValidationError
+
         with pytest.raises(ValidationError):
             BacktestConfig(
                 start_date=date(2020, 1, 1),
@@ -300,7 +298,9 @@ class TestPerformanceMetrics:
     def test_ic_metrics(self) -> None:
         ic_vals = [0.05, 0.06, 0.04, 0.07, 0.03, 0.05, 0.06, 0.04, 0.08, 0.02]
         rng = np.random.default_rng(3)
-        ret = pd.Series(rng.normal(0.0003, 0.01, 252), index=pd.bdate_range("2022-01-01", periods=252))
+        ret = pd.Series(
+            rng.normal(0.0003, 0.01, 252), index=pd.bdate_range("2022-01-01", periods=252)
+        )
         m = compute_performance_metrics(
             net_returns=ret,
             gross_returns=ret,
@@ -323,6 +323,7 @@ class TestPerformanceMetrics:
 class TestTransactionCosts:
     def test_trade_total_cost_positive(self) -> None:
         from quantflow.backtest.engine import _compute_trade
+
         t = _compute_trade(
             symbol="AAPL",
             shares=100.0,
@@ -339,6 +340,7 @@ class TestTransactionCosts:
 
     def test_trade_side_buy_positive_shares(self) -> None:
         from quantflow.backtest.engine import _compute_trade
+
         t = _compute_trade(
             symbol="MSFT",
             shares=50.0,
@@ -353,6 +355,7 @@ class TestTransactionCosts:
 
     def test_trade_side_sell_negative_shares(self) -> None:
         from quantflow.backtest.engine import _compute_trade
+
         t = _compute_trade(
             symbol="TSLA",
             shares=-200.0,
@@ -367,6 +370,7 @@ class TestTransactionCosts:
 
     def test_market_impact_increases_with_trade_size(self) -> None:
         from quantflow.backtest.engine import _compute_trade
+
         small = _compute_trade("X", 10.0, 100.0, 1_000_000.0, 0.20, 0.005, 5.0, date(2022, 1, 1))
         large = _compute_trade("X", 1000.0, 100.0, 1_000_000.0, 0.20, 0.005, 5.0, date(2022, 1, 1))
         assert large.market_impact_cost > small.market_impact_cost
@@ -444,19 +448,18 @@ class TestQuantFlowStrategy:
         # Symbols with signal ≤ 0 should have weight 0
         for sym, sig in sigs.items():
             if sig <= 0.0:
-                assert weights.get(sym, 0.0) == pytest.approx(0.0, abs=1e-6), (
-                    f"Bearish symbol {sym} (sig={sig:.3f}) has non-zero weight {weights.get(sym, 0.0)}"
-                )
+                assert weights.get(sym, 0.0) == pytest.approx(
+                    0.0, abs=1e-6
+                ), f"Bearish symbol {sym} (sig={sig:.3f}) has non-zero weight {weights.get(sym, 0.0)}"
 
-    def test_fallback_equal_weight_when_all_signals_zero(
-        self, strategy: QuantFlowStrategy
-    ) -> None:
+    def test_fallback_equal_weight_when_all_signals_zero(self, strategy: QuantFlowStrategy) -> None:
         """All-zero signals → equal-weight fallback."""
-        zero_sigs = {s: 0.0 for s in _SYMBOLS[:4]}
+        zero_sigs = dict.fromkeys(_SYMBOLS[:4], 0.0)
         rng = np.random.default_rng(5)
         ret_data = rng.normal(0, 0.01, (100, 4))
         returns = pd.DataFrame(
-            ret_data, columns=_SYMBOLS[:4],
+            ret_data,
+            columns=_SYMBOLS[:4],
             index=pd.bdate_range("2022-01-01", periods=100),
         )
         weights = strategy.compute_weights(zero_sigs, returns)
@@ -465,9 +468,7 @@ class TestQuantFlowStrategy:
         for v in weights.values():
             assert v == pytest.approx(1.0 / 4, abs=1e-6)
 
-    def test_cross_sectional_zscore_clips_extremes(
-        self, strategy: QuantFlowStrategy
-    ) -> None:
+    def test_cross_sectional_zscore_clips_extremes(self, strategy: QuantFlowStrategy) -> None:
         raw = {"A": 10.0, "B": -10.0, "C": 0.0, "D": 1.0}
         out = strategy._cross_sectional_zscore(raw)
         for v in out.values():
@@ -502,9 +503,7 @@ class TestBacktestEngine:
         engine = BacktestEngine(backtest_config)
         result = await engine.run(QuantFlowStrategy(), prices)
         # First equity point should equal initial_capital (no trades yet)
-        assert result.equity_curve[0] == pytest.approx(
-            backtest_config.initial_capital, rel=0.01
-        )
+        assert result.equity_curve[0] == pytest.approx(backtest_config.initial_capital, rel=0.01)
 
     async def test_equity_curve_positive_throughout(
         self, prices: pd.DataFrame, backtest_config: BacktestConfig
@@ -569,9 +568,9 @@ class TestBacktestEngine:
             engine = BacktestEngine(backtest_config)
             weights = engine._apply_position_limits(raw_weights)
             for sym, w in weights.items():
-                assert w <= backtest_config.max_position_size + 1e-6, (
-                    f"Position limit violated at {t}: {sym}={w:.4f} > {backtest_config.max_position_size}"
-                )
+                assert (
+                    w <= backtest_config.max_position_size + 1e-6
+                ), f"Position limit violated at {t}: {sym}={w:.4f} > {backtest_config.max_position_size}"
 
     async def test_insufficient_trading_days_raises(self) -> None:
         cfg = BacktestConfig(
@@ -625,7 +624,9 @@ class TestNoLookAheadBias:
         rng = np.random.default_rng(999)
         prices_corrupted = prices_full.copy()
         future_mask = prices_corrupted.index > as_of
-        prices_corrupted.loc[future_mask] = rng.uniform(1, 10_000, size=(future_mask.sum(), len(_SYMBOLS)))
+        prices_corrupted.loc[future_mask] = rng.uniform(
+            1, 10_000, size=(future_mask.sum(), len(_SYMBOLS))
+        )
 
         # Generate signal using only data up to as_of (same slice, identical to above)
         prices_up_to_corrupted = prices_corrupted.loc[:as_of]
@@ -633,9 +634,9 @@ class TestNoLookAheadBias:
 
         # Signals must be identical — the strategy only sees data up to as_of
         for sym in _SYMBOLS:
-            assert sigs_original[sym] == pytest.approx(sigs_corrupted[sym], abs=1e-10), (
-                f"Signal for {sym} changed after corrupting future data → look-ahead bias detected"
-            )
+            assert sigs_original[sym] == pytest.approx(
+                sigs_corrupted[sym], abs=1e-10
+            ), f"Signal for {sym} changed after corrupting future data → look-ahead bias detected"
 
     def test_signal_changes_when_historical_data_changes(self) -> None:
         """Perturbing historical (past) prices MUST change the signal —
@@ -657,10 +658,10 @@ class TestNoLookAheadBias:
         sigs_modified = strategy.generate_signals(prices_modified.loc[:as_of].copy(), as_of)
 
         # At least some signals should change
-        n_changed = sum(
-            abs(sigs_original[s] - sigs_modified[s]) > 1e-6 for s in _SYMBOLS
-        )
-        assert n_changed > 0, "No signal changed after perturbing historical data — strategy may be broken"
+        n_changed = sum(abs(sigs_original[s] - sigs_modified[s]) > 1e-6 for s in _SYMBOLS)
+        assert (
+            n_changed > 0
+        ), "No signal changed after perturbing historical data — strategy may be broken"
 
     def test_compute_ic_uses_future_data_for_evaluation_only(self) -> None:
         """IC computation needs future prices for evaluation — it must not
@@ -697,7 +698,7 @@ class TestMaxDrawdownHelper:
         # Construct: 50% gain, then 33% loss → net drawdown ~ -22%
         n = 100
         returns = np.zeros(n)
-        returns[:50] = 0.01     # 50 days up
+        returns[:50] = 0.01  # 50 days up
         returns[50:80] = -0.015  # 30 days down
         s = pd.Series(returns, index=pd.bdate_range("2022-01-01", periods=n))
         dd, dur = _max_drawdown_and_duration(s)
@@ -753,9 +754,9 @@ class TestStressPeriods:
         for period_name, m in result.stress_periods.items():
             for field_name, val in m.model_dump().items():
                 if isinstance(val, float):
-                    assert np.isfinite(val), (
-                        f"Non-finite metric in stress period {period_name}: {field_name}={val}"
-                    )
+                    assert np.isfinite(
+                        val
+                    ), f"Non-finite metric in stress period {period_name}: {field_name}={val}"
 
     @pytest.mark.asyncio
     async def test_stress_periods_empty_when_out_of_range(self) -> None:
@@ -814,9 +815,9 @@ class TestRebalancingSchedule:
         raw = {"S0": 0.50} | {f"S{i}": 0.50 / 9 for i in range(1, 10)}
         limited = engine._apply_position_limits(raw)
         for sym, w in limited.items():
-            assert w <= backtest_config.max_position_size + 1e-8, (
-                f"{sym}={w:.4f} > max_pos={backtest_config.max_position_size}"
-            )
+            assert (
+                w <= backtest_config.max_position_size + 1e-8
+            ), f"{sym}={w:.4f} > max_pos={backtest_config.max_position_size}"
         assert abs(sum(limited.values()) - 1.0) < 1e-6
 
 

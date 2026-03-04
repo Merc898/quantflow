@@ -8,11 +8,9 @@ URI is configured.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Callable, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 
 import numpy as np
-import pandas as pd
 from sklearn.model_selection import TimeSeriesSplit
 
 from quantflow.config.constants import (
@@ -23,6 +21,11 @@ from quantflow.config.constants import (
 )
 from quantflow.config.logging import get_logger
 from quantflow.models.base import BaseQuantModel, ModelOutput
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    import pandas as pd
 
 logger = get_logger(__name__)
 

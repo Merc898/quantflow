@@ -11,14 +11,16 @@ Uses pykalman's EM algorithm for parameter initialisation.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any, Literal
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
-import pandas as pd
 
 from quantflow.config.logging import get_logger
 from quantflow.models.base import BaseQuantModel, ModelOutput
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 logger = get_logger(__name__)
 
@@ -65,7 +67,7 @@ class KalmanFilterModel(BaseQuantModel):
     # Fit
     # ------------------------------------------------------------------
 
-    def fit(self, data: pd.DataFrame) -> "KalmanFilterModel":
+    def fit(self, data: pd.DataFrame) -> KalmanFilterModel:
         """Fit the Kalman filter via EM and run forward filtering pass.
 
         Args:
@@ -145,7 +147,7 @@ class KalmanFilterModel(BaseQuantModel):
         return ModelOutput(
             model_name=self.model_name,
             symbol=self.symbol,
-            timestamp=datetime.now(tz=timezone.utc),
+            timestamp=datetime.now(tz=UTC),
             signal=signal,
             confidence=confidence,
             forecast_return=float(state.mean() if state.ndim > 0 else state),
@@ -175,9 +177,7 @@ class KalmanFilterModel(BaseQuantModel):
 
         return obs.astype(np.float64)
 
-    def _beta_signal(
-        self, state: np.ndarray, state_std: float
-    ) -> tuple[float, dict[str, Any]]:
+    def _beta_signal(self, state: np.ndarray, state_std: float) -> tuple[float, dict[str, Any]]:
         """Signal: deviation of dynamic beta from 1."""
         beta = float(state[0]) if state.ndim > 0 else float(state)
         raw = -(beta - 1.0)  # low beta → bullish (defensive)
@@ -188,9 +188,7 @@ class KalmanFilterModel(BaseQuantModel):
         }
         return signal, meta
 
-    def _spread_signal(
-        self, state: np.ndarray, state_std: float
-    ) -> tuple[float, dict[str, Any]]:
+    def _spread_signal(self, state: np.ndarray, state_std: float) -> tuple[float, dict[str, Any]]:
         """Signal: mean-reversion of cointegration spread."""
         spread = float(state[0]) if state.ndim > 0 else float(state)
         raw = -spread / (state_std + 1e-8)
@@ -201,9 +199,7 @@ class KalmanFilterModel(BaseQuantModel):
         }
         return signal, meta
 
-    def _trend_signal(
-        self, state: np.ndarray, state_std: float
-    ) -> tuple[float, dict[str, Any]]:
+    def _trend_signal(self, state: np.ndarray, state_std: float) -> tuple[float, dict[str, Any]]:
         """Signal: direction of latent local-level trend."""
         trend = float(state[0]) if state.ndim > 0 else float(state)
         signal = self.normalise_signal(trend / (state_std + 1e-8))
@@ -213,9 +209,7 @@ class KalmanFilterModel(BaseQuantModel):
         }
         return signal, meta
 
-    def _factor_signal(
-        self, state: np.ndarray, state_std: float
-    ) -> tuple[float, dict[str, Any]]:
+    def _factor_signal(self, state: np.ndarray, state_std: float) -> tuple[float, dict[str, Any]]:
         """Signal: latent factor loading direction."""
         factor = float(state.mean()) if state.ndim > 0 else float(state)
         signal = self.normalise_signal(factor / (state_std + 1e-8))

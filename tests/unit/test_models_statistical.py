@@ -6,16 +6,17 @@ models can be fitted and produce valid ModelOutput objects.
 
 from __future__ import annotations
 
+from datetime import UTC
+
 import numpy as np
 import pandas as pd
 import pytest
 
 from quantflow.models.base import BaseQuantModel, ModelOutput
+from quantflow.models.ml.base_trainer import WalkForwardEvaluator, WalkForwardResult
 from quantflow.models.statistical.factor_pca import PCARiskFactorModel
 from quantflow.models.statistical.garch import GARCHModel
 from quantflow.models.statistical.kalman import KalmanFilterModel
-from quantflow.models.ml.base_trainer import WalkForwardEvaluator, WalkForwardResult
-
 
 # ===========================================================================
 # Helpers
@@ -54,12 +55,12 @@ def _make_ohlcv(n: int = 400, seed: int = 99) -> pd.DataFrame:
 
 class TestModelOutput:
     def test_valid_output_constructed(self) -> None:
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         output = ModelOutput(
             model_name="test",
             symbol="AAPL",
-            timestamp=datetime.now(tz=timezone.utc),
+            timestamp=datetime.now(tz=UTC),
             signal=0.5,
             confidence=0.6,
             forecast_return=0.01,
@@ -69,13 +70,13 @@ class TestModelOutput:
         assert output.confidence == 0.6
 
     def test_signal_out_of_range_raises(self) -> None:
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         with pytest.raises(Exception):
             ModelOutput(
                 model_name="test",
                 symbol="AAPL",
-                timestamp=datetime.now(tz=timezone.utc),
+                timestamp=datetime.now(tz=UTC),
                 signal=1.5,  # out of [-1, 1]
                 confidence=0.5,
                 forecast_return=0.0,
@@ -83,13 +84,13 @@ class TestModelOutput:
             )
 
     def test_negative_forecast_std_raises(self) -> None:
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         with pytest.raises(Exception):
             ModelOutput(
                 model_name="test",
                 symbol="AAPL",
-                timestamp=datetime.now(tz=timezone.utc),
+                timestamp=datetime.now(tz=UTC),
                 signal=0.0,
                 confidence=0.5,
                 forecast_return=0.0,

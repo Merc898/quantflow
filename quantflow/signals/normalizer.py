@@ -154,9 +154,7 @@ class SignalNormalizer:
         hi = float(s.quantile(self._high))
         return s.clip(lo, hi)
 
-    def _cross_sectional_zscore(
-        self, s: pd.Series, cross_section: pd.DataFrame
-    ) -> pd.Series:
+    def _cross_sectional_zscore(self, s: pd.Series, cross_section: pd.DataFrame) -> pd.Series:
         """Apply cross-sectional (universe-relative) standardization.
 
         At each time step, subtract the cross-sectional mean and divide

@@ -10,15 +10,19 @@ from __future__ import annotations
 
 import time
 import uuid
-from typing import Awaitable, Callable
+from typing import TYPE_CHECKING
 
 import structlog
-from fastapi import Request, Response
 from jose import JWTError
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from quantflow.api.auth.jwt import decode_token
 from quantflow.config.logging import get_logger
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
+    from fastapi import Request, Response
 
 logger = get_logger(__name__)
 

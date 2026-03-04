@@ -21,11 +21,10 @@ Output signal = -tanh(E[shortfall] / (sigma * sqrt(horizon)))
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 import numpy as np
-import pandas as pd
 from pydantic import BaseModel, Field
 
 from quantflow.config.constants import (
@@ -35,6 +34,9 @@ from quantflow.config.constants import (
 )
 from quantflow.config.logging import get_logger
 from quantflow.models.base import BaseQuantModel, ModelOutput
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 logger = get_logger(__name__)
 
@@ -118,7 +120,7 @@ class OptimalExecutionModel(BaseQuantModel):
     # Public interface
     # ------------------------------------------------------------------
 
-    def fit(self, data: pd.DataFrame) -> "OptimalExecutionModel":
+    def fit(self, data: pd.DataFrame) -> OptimalExecutionModel:
         """Calibrate market impact parameters.
 
         Args:
@@ -188,7 +190,7 @@ class OptimalExecutionModel(BaseQuantModel):
         return ModelOutput(
             model_name=self.model_name,
             symbol=self.symbol,
-            timestamp=datetime.now(tz=timezone.utc),
+            timestamp=datetime.now(tz=UTC),
             signal=round(signal, 6),
             confidence=round(confidence, 6),
             forecast_return=0.0,
@@ -209,9 +211,7 @@ class OptimalExecutionModel(BaseQuantModel):
     # Calibration
     # ------------------------------------------------------------------
 
-    def _calibrate(
-        self, data: pd.DataFrame, log_returns: pd.Series
-    ) -> ExecutionParameters:
+    def _calibrate(self, data: pd.DataFrame, log_returns: pd.Series) -> ExecutionParameters:
         """Calibrate market impact parameters from historical data.
 
         Args:
@@ -233,7 +233,7 @@ class OptimalExecutionModel(BaseQuantModel):
 
         # Eta (temporary impact): larger for illiquid / high-vol assets.
         # Proxy: eta = MARKET_IMPACT_COEFFICIENT * sigma^2 * position_size
-        eta = MARKET_IMPACT_COEFFICIENT * sigma_daily ** 2 * self._position_adv
+        eta = MARKET_IMPACT_COEFFICIENT * sigma_daily**2 * self._position_adv
         eta = max(eta, 1e-8)
 
         return ExecutionParameters(
@@ -261,7 +261,7 @@ class OptimalExecutionModel(BaseQuantModel):
         sigma_d = params.sigma / np.sqrt(TRADING_DAYS_PER_YEAR)  # daily vol
 
         # Urgency parameter kappa
-        kappa_sq = params.lam * sigma_d ** 2 / max(params.eta, 1e-12)
+        kappa_sq = params.lam * sigma_d**2 / max(params.eta, 1e-12)
         kappa = float(np.sqrt(max(kappa_sq, 0.0)))
 
         # Optimal trajectory x_n (normalised, starting at X=1)
@@ -271,10 +271,7 @@ class OptimalExecutionModel(BaseQuantModel):
             # Flat TWAP when kappa ≈ 0
             trajectory = list(1.0 - ns / N)
         else:
-            trajectory = [
-                float(np.sinh(kappa * (T - n)) / denom)
-                for n in ns
-            ]
+            trajectory = [float(np.sinh(kappa * (T - n)) / denom) for n in ns]
 
         # Trade list (shares sold at each step)
         trade_list = [trajectory[n] - trajectory[n + 1] for n in range(N)]
@@ -282,14 +279,13 @@ class OptimalExecutionModel(BaseQuantModel):
         # Expected shortfall (normalised, as fraction of initial position value)
         # E[S] = 0.5*gamma*X^2 + eta * sum(v_n^2) / X
         # With X=1: E[S] = 0.5*gamma + eta * sum(trade_list^2)
-        expected_shortfall = (
-            0.5 * params.gamma
-            + params.eta * float(np.sum(np.array(trade_list) ** 2))
+        expected_shortfall = 0.5 * params.gamma + params.eta * float(
+            np.sum(np.array(trade_list) ** 2)
         )
 
         # Expected variance (market risk of the trajectory)
         # Var[S] = sigma^2 * tau * sum(x_n^2)  (tau=1 day)
-        expected_variance = sigma_d ** 2 * float(np.sum(np.array(trajectory[:-1]) ** 2))
+        expected_variance = sigma_d**2 * float(np.sum(np.array(trajectory[:-1]) ** 2))
 
         return ExecutionSchedule(
             trajectory=[round(x, 6) for x in trajectory],

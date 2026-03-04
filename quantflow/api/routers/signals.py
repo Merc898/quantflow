@@ -6,13 +6,13 @@ explainability require Premium tier.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
-from typing import Annotated, Any
+from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
 import yfinance as yf
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy import desc, select
 
@@ -25,7 +25,9 @@ from quantflow.api.auth.dependencies import (
 from quantflow.config.constants import TIER_FREE, TIER_PREMIUM
 from quantflow.config.logging import get_logger
 from quantflow.db.models import Recommendation
-from quantflow.signals.recommendation import FinalRecommendation
+
+if TYPE_CHECKING:
+    from quantflow.signals.recommendation import FinalRecommendation
 
 logger = get_logger(__name__)
 
@@ -169,7 +171,9 @@ async def _generate_signal(symbol: str) -> FinalRecommendation:
 
         # Minimal aggregation (no model outputs — data-quality signal only)
         aggregator = EnsembleAggregator()
-        agg = aggregator.aggregate(model_outputs=[], realized_vol=float(returns.iloc[-21:].std() * np.sqrt(252)))
+        agg = aggregator.aggregate(
+            model_outputs=[], realized_vol=float(returns.iloc[-21:].std() * np.sqrt(252))
+        )
 
         # Recommendation
         engine = RecommendationEngine(models_available=1)
@@ -263,7 +267,7 @@ async def get_signal_history(
             detail="Free tier is limited to 30 days of history. Upgrade to Premium for full history.",
         )
 
-    since = datetime.now(tz=timezone.utc) - timedelta(days=days)
+    since = datetime.now(tz=UTC) - timedelta(days=days)
     result = await db.execute(
         select(Recommendation)
         .where(Recommendation.symbol == symbol, Recommendation.time >= since)
@@ -415,8 +419,7 @@ async def screener(
         select(Recommendation)
         .join(
             subq,
-            (Recommendation.symbol == subq.c.symbol)
-            & (Recommendation.time == subq.c.max_time),
+            (Recommendation.symbol == subq.c.symbol) & (Recommendation.time == subq.c.max_time),
         )
         .where(Recommendation.confidence >= min_confidence)
         .order_by(desc(Recommendation.signal_strength))
@@ -426,5 +429,5 @@ async def screener(
     return ScreenerResponse(
         count=len(rows),
         ranked=[_row_to_response(r) for r in rows],
-        generated_at=datetime.now(tz=timezone.utc),
+        generated_at=datetime.now(tz=UTC),
     )

@@ -8,14 +8,16 @@ Generates human-readable explanations via:
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from pydantic import BaseModel, Field
 
 from quantflow.config.logging import get_logger
-from quantflow.signals.aggregator import AggregationResult
-from quantflow.signals.recommendation import FinalRecommendation
+
+if TYPE_CHECKING:
+    from quantflow.signals.aggregator import AggregationResult
+    from quantflow.signals.recommendation import FinalRecommendation
 
 logger = get_logger(__name__)
 
@@ -101,12 +103,8 @@ class RecommendationExplainer:
         Returns:
             :class:`ExplanationReport`.
         """
-        contribution_chart = self._build_contribution_chart(
-            recommendation, aggregation_result
-        )
-        confidence_decomp = self._confidence_decomposition(
-            recommendation, aggregation_result
-        )
+        contribution_chart = self._build_contribution_chart(recommendation, aggregation_result)
+        confidence_decomp = self._confidence_decomposition(recommendation, aggregation_result)
         top_features = self._extract_top_features(shap_features, recommendation)
 
         # Generate narrative
@@ -200,9 +198,7 @@ class RecommendationExplainer:
         """
         # Model agreement: fraction of category composites agreeing with final signal
         final_sign = np.sign(rec.signal_strength)
-        composites = [
-            c.composite for c in agg.category_composites.values() if c.n_models > 0
-        ]
+        composites = [c.composite for c in agg.category_composites.values() if c.n_models > 0]
         if composites:
             agreement = float(
                 sum(1 for c in composites if np.sign(c) == final_sign) / len(composites)
@@ -211,15 +207,9 @@ class RecommendationExplainer:
             agreement = 0.5
 
         data_quality = rec.data_quality_score
-        regime_clarity = (
-            float(rec.regime.regime_confidence)
-            if rec.regime is not None
-            else 0.5
-        )
+        regime_clarity = float(rec.regime.regime_confidence) if rec.regime is not None else 0.5
         # Vol adjustment: how much vol scaling moved the signal
-        vol_adj = float(
-            1.0 - abs(agg.vol_scale_factor - 1.0) / 2.0
-        )
+        vol_adj = float(1.0 - abs(agg.vol_scale_factor - 1.0) / 2.0)
         vol_adj = float(np.clip(vol_adj, 0.0, 1.0))
 
         return {
@@ -247,9 +237,7 @@ class RecommendationExplainer:
             List of top feature strings (max 10).
         """
         if shap_features:
-            sorted_feats = sorted(
-                shap_features.items(), key=lambda x: abs(x[1]), reverse=True
-            )
+            sorted_feats = sorted(shap_features.items(), key=lambda x: abs(x[1]), reverse=True)
             return [f"{name} ({val:+.3f})" for name, val in sorted_feats[:10]]
 
         # Fallback: bullish + bearish factors
@@ -272,15 +260,15 @@ class RecommendationExplainer:
         """
         try:
             regime_label = rec.regime.overall_regime if rec.regime else "unknown"
-            top_bull = ", ".join(rec.top_bullish_factors[:3]) or "none"
-            top_bear = ", ".join(rec.top_bearish_factors[:3]) or "none"
-            cat_summary = "; ".join(
+            ", ".join(rec.top_bullish_factors[:3]) or "none"
+            ", ".join(rec.top_bearish_factors[:3]) or "none"
+            "; ".join(
                 f"{name}: {c.composite:+.2f} ({c.n_models} models)"
                 for name, c in agg.category_composites.items()
                 if c.n_models > 0
             )
 
-            narrative = await self._anthropic.generate_recommendation_rationale(
+            narrative = await self._anthropic.generate_recommendation_rationale(  # type: ignore[union-attr]
                 symbol=rec.symbol,
                 signal=rec.signal_strength,
                 confidence=rec.confidence,
@@ -326,9 +314,7 @@ class RecommendationExplainer:
             else ""
         )
         warning_text = (
-            f" Risk warnings: {'; '.join(rec.risk_warnings)}."
-            if rec.risk_warnings
-            else ""
+            f" Risk warnings: {'; '.join(rec.risk_warnings)}." if rec.risk_warnings else ""
         )
 
         return (

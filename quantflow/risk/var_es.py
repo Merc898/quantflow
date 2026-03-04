@@ -13,15 +13,17 @@ All VaR / ES values are expressed as *return* values (negative = loss).
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
-import pandas as pd
 import scipy.stats as stats
 from pydantic import BaseModel, Field
 
 from quantflow.config.constants import TRADING_DAYS_PER_YEAR
 from quantflow.config.logging import get_logger
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 logger = get_logger(__name__)
 
@@ -116,9 +118,7 @@ class RiskCalculator:
         """
         clean = returns.dropna().astype(np.float64)
         if len(clean) < _MIN_OBSERVATIONS:
-            raise ValueError(
-                f"Insufficient observations: {len(clean)} < {_MIN_OBSERVATIONS}"
-            )
+            raise ValueError(f"Insufficient observations: {len(clean)} < {_MIN_OBSERVATIONS}")
 
         window_returns = clean.iloc[-self._window :]
 
@@ -188,7 +188,7 @@ class RiskCalculator:
                     returns,
                     confidence=confidence,
                     horizon=horizon,
-                    method=method,  # type: ignore[arg-type]
+                    method=method,
                 )
             except Exception as exc:
                 self._logger.warning(
@@ -241,9 +241,7 @@ class RiskCalculator:
 
         alpha = 1.0 - confidence
         var = float(scaled_mu + stats.norm.ppf(alpha) * scaled_sigma)
-        es = float(
-            scaled_mu - scaled_sigma * stats.norm.pdf(stats.norm.ppf(alpha)) / alpha
-        )
+        es = float(scaled_mu - scaled_sigma * stats.norm.pdf(stats.norm.ppf(alpha)) / alpha)
 
         return RiskReport(
             method="portfolio_parametric",
@@ -279,8 +277,7 @@ class RiskCalculator:
             # Non-overlapping windows
             n_periods = len(returns) // horizon
             agg = np.array(
-                [returns.iloc[i * horizon : (i + 1) * horizon].sum()
-                 for i in range(n_periods)]
+                [returns.iloc[i * horizon : (i + 1) * horizon].sum() for i in range(n_periods)]
             )
         else:
             agg = returns.values.astype(np.float64)
@@ -324,26 +321,19 @@ class RiskCalculator:
             df = max(df, 2.1)  # Ensure finite variance
             scaled_loc = loc * horizon
             scaled_scale = scale * sqrt_h
-            var = float(
-                scaled_loc + stats.t.ppf(alpha, df) * scaled_scale
-            )
+            var = float(scaled_loc + stats.t.ppf(alpha, df) * scaled_scale)
             # ES for Student-t
             t_alpha = stats.t.ppf(alpha, df)
             es = float(
                 scaled_loc
-                - scaled_scale
-                * (stats.t.pdf(t_alpha, df) / alpha)
-                * ((df + t_alpha**2) / (df - 1))
+                - scaled_scale * (stats.t.pdf(t_alpha, df) / alpha) * ((df + t_alpha**2) / (df - 1))
             )
             return var, min(es, var), "student_t", float(df)
         else:
             scaled_mu = mu * horizon
             scaled_sigma = sigma * sqrt_h
             var = float(scaled_mu + stats.norm.ppf(alpha) * scaled_sigma)
-            es = float(
-                scaled_mu
-                - scaled_sigma * stats.norm.pdf(stats.norm.ppf(alpha)) / alpha
-            )
+            es = float(scaled_mu - scaled_sigma * stats.norm.pdf(stats.norm.ppf(alpha)) / alpha)
             return var, min(es, var), "normal", None
 
     def _monte_carlo(
@@ -371,8 +361,9 @@ class RiskCalculator:
             df, loc, scale = stats.t.fit(r, floc=r.mean())
             df = max(df, 2.1)
             # Simulate horizon-day returns as sum of daily draws
-            daily = stats.t.rvs(df, loc=loc, scale=scale,
-                                size=(self._n_sims, horizon), random_state=rng)
+            daily = stats.t.rvs(
+                df, loc=loc, scale=scale, size=(self._n_sims, horizon), random_state=rng
+            )
             dist = "student_t"
             df_out: float | None = float(df)
         else:
@@ -417,10 +408,7 @@ class RiskCalculator:
         # Log-likelihood ratio statistic
         p_hat = x / T
         try:
-            lr = 2.0 * (
-                x * np.log(p_hat / p)
-                + (T - x) * np.log((1.0 - p_hat) / (1.0 - p))
-            )
+            lr = 2.0 * (x * np.log(p_hat / p) + (T - x) * np.log((1.0 - p_hat) / (1.0 - p)))
         except (ValueError, ZeroDivisionError):
             return 1.0
 

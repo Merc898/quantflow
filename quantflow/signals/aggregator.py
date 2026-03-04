@@ -14,18 +14,18 @@ Risk scaling (volatility targeting):
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from pydantic import BaseModel, Field
 
 from quantflow.config.constants import (
-    MAX_POSITION_SIZE,
     TARGET_ANNUAL_VOLATILITY,
-    TRADING_DAYS_PER_YEAR,
 )
 from quantflow.config.logging import get_logger
-from quantflow.models.base import ModelOutput
+
+if TYPE_CHECKING:
+    from quantflow.models.base import ModelOutput
 
 logger = get_logger(__name__)
 
@@ -35,15 +35,28 @@ _DEFAULT_ML_WEIGHT = 0.45
 _DEFAULT_SENTIMENT_WEIGHT = 0.20
 
 # Model name → category mapping
-_STAT_MODELS = frozenset({
-    "GARCHModel", "ARIMAModel", "KalmanFilterModel",
-    "VARModel", "MarkovSwitchingModel", "PCARiskFactorModel",
-})
-_ML_MODELS = frozenset({
-    "GBTSignalModel", "RandomForestModel", "LASSOModel",
-    "RidgeModel", "ElasticNetModel", "LSTMSignalModel",
-    "TimeSeriesTransformerModel", "DRLPortfolioAgent",
-})
+_STAT_MODELS = frozenset(
+    {
+        "GARCHModel",
+        "ARIMAModel",
+        "KalmanFilterModel",
+        "VARModel",
+        "MarkovSwitchingModel",
+        "PCARiskFactorModel",
+    }
+)
+_ML_MODELS = frozenset(
+    {
+        "GBTSignalModel",
+        "RandomForestModel",
+        "LASSOModel",
+        "RidgeModel",
+        "ElasticNetModel",
+        "LSTMSignalModel",
+        "TimeSeriesTransformerModel",
+        "DRLPortfolioAgent",
+    }
+)
 
 
 # ---------------------------------------------------------------------------
@@ -153,24 +166,23 @@ class EnsembleAggregator:
         stat_outputs = [o for o in model_outputs if o.model_name in _STAT_MODELS]
         ml_outputs = [o for o in model_outputs if o.model_name in _ML_MODELS]
         # Unknown model names go to ML (most likely)
-        unknown = [o for o in model_outputs
-                   if o.model_name not in _STAT_MODELS and o.model_name not in _ML_MODELS]
+        unknown = [
+            o
+            for o in model_outputs
+            if o.model_name not in _STAT_MODELS and o.model_name not in _ML_MODELS
+        ]
         ml_outputs = ml_outputs + unknown
 
         # Stage 1: within-category composites
         stat_composite = self._category_composite(
             stat_outputs, model_weights, category="statistical"
         )
-        ml_composite = self._category_composite(
-            ml_outputs, model_weights, category="ml"
-        )
+        ml_composite = self._category_composite(ml_outputs, model_weights, category="ml")
         sent_composite = self._sentiment_composite(sentiment_score)
 
         # Stage 2: cross-category weighted combination
         # Normalise category weights based on which categories have data
-        cat_weights = self._normalise_category_weights(
-            stat_outputs, ml_outputs, sentiment_score
-        )
+        cat_weights = self._normalise_category_weights(stat_outputs, ml_outputs, sentiment_score)
 
         raw = (
             cat_weights["statistical"] * stat_composite.composite
@@ -182,9 +194,7 @@ class EnsembleAggregator:
         # Risk scaling (volatility targeting)
         scale_factor = 1.0
         if realized_vol is not None and realized_vol > 1e-6:
-            scale_factor = float(
-                np.clip(self._target_vol / realized_vol, 0.1, 3.0)
-            )
+            scale_factor = float(np.clip(self._target_vol / realized_vol, 0.1, 3.0))
         risk_scaled = float(np.clip(raw * scale_factor, -1.0, 1.0))
 
         n_total = len(model_outputs) + (1 if sentiment_score is not None else 0)
@@ -241,8 +251,7 @@ class EnsembleAggregator:
 
         signals = {o.model_name: o.signal for o in outputs}
         if model_weights:
-            raw_w = {o.model_name: model_weights.get(o.model_name, o.confidence)
-                     for o in outputs}
+            raw_w = {o.model_name: model_weights.get(o.model_name, o.confidence) for o in outputs}
         else:
             raw_w = {o.model_name: max(o.confidence, 1e-4) for o in outputs}
 

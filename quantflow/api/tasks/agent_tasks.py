@@ -119,9 +119,7 @@ def run_intelligence_cycle_task(
 
     try:
         orchestrator = _build_orchestrator()
-        report = _run_async(
-            orchestrator.run_intelligence_cycle(symbol, market_data)
-        )
+        report = _run_async(orchestrator.run_intelligence_cycle(symbol, market_data))
         result = report.model_dump(mode="json")
         logger.info(
             "Intelligence cycle task complete",
@@ -181,9 +179,7 @@ def run_batch_intelligence_task(
 
     try:
         orchestrator = _build_orchestrator()
-        reports = _run_async(
-            orchestrator.run_batch(symbols, market_data)
-        )
+        reports = _run_async(orchestrator.run_batch(symbols, market_data))
         return {sym: r.model_dump(mode="json") for sym, r in reports.items()}
 
     except Exception as exc:

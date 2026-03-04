@@ -9,6 +9,7 @@ Channels follow the pattern ``signals:{SYMBOL}`` or ``market``.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from collections import defaultdict
 from typing import Any
 
@@ -100,10 +101,8 @@ class ConnectionManager:
             websocket: Target connection.
             message: JSON-serialisable payload.
         """
-        try:
+        with contextlib.suppress(WebSocketDisconnect, RuntimeError):
             await websocket.send_json(message)
-        except (WebSocketDisconnect, RuntimeError):
-            pass
 
     # ------------------------------------------------------------------
     # Introspection
