@@ -77,8 +77,7 @@ jobs:
       - name: Run unit tests (no integration, no live APIs)
         run: |
           python -m pytest tests/ \
-            --ignore=tests/integration/test_agents_live.py \
-            --ignore=tests/integration/test_api_endpoints.py \
+            --ignore=tests/integration \
             -v --tb=short \
             --cov=quantflow \
             --cov-report=xml \

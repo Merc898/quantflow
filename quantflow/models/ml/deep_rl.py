@@ -36,14 +36,23 @@ _REWARD_LAMBDA = 0.5  # Sharpe penalty coefficient
 # Custom gymnasium environment
 # ---------------------------------------------------------------------------
 
+try:
+    import gymnasium as _gymnasium_base
 
-import gymnasium as _gymnasium_base  # noqa: E402 — required for class definition
+    _GYMNASIUM_AVAILABLE = True
+except ImportError:  # pragma: no cover
+    _gymnasium_base = None  # type: ignore[assignment]
+    _GYMNASIUM_AVAILABLE = False
 
 if TYPE_CHECKING:
     import pandas as pd
 
+# When gymnasium is unavailable, use object as a stand-in base so the module
+# still imports (tests guard with importorskip and skip gracefully).
+_EnvBase: type = _gymnasium_base.Env if _GYMNASIUM_AVAILABLE else object  # type: ignore[union-attr]
 
-class PortfolioEnv(_gymnasium_base.Env):
+
+class PortfolioEnv(_EnvBase):  # type: ignore[misc]
     """Single-asset portfolio environment following the gymnasium Env interface.
 
     State: Normalised feature vector at time ``t``.
