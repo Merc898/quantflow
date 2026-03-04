@@ -246,6 +246,11 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*" = ["ARG001", "S101", "B017"]
 "__init__.py" = ["F401"]
+# Pydantic models need runtime access to field-annotation types (TC001/TC003
+# would move them into TYPE_CHECKING, breaking model resolution).
+"quantflow/models/base.py" = ["TC003"]
+"quantflow/agents/schemas.py" = ["TC003"]
+"quantflow/signals/recommendation.py" = ["TC001"]
 
 [tool.black]
 target-version = ["py311"]

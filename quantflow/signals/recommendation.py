@@ -36,13 +36,13 @@ from quantflow.config.constants import (
     TRADING_DAYS_PER_YEAR,
 )
 from quantflow.config.logging import get_logger
+from quantflow.signals.regime_detector import RegimeState
 
 if TYPE_CHECKING:
     import pandas as pd
 
     from quantflow.models.base import ModelOutput
     from quantflow.risk.var_es import RiskReport
-    from quantflow.signals.regime_detector import RegimeState
 
 logger = get_logger(__name__)
 

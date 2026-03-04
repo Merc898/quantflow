@@ -212,7 +212,6 @@ async def optimize_portfolio(
 async def efficient_frontier(
     symbols: str = Query(..., description="Comma-separated ticker symbols"),
     n_points: int = Query(default=30, ge=10, le=100),
-    user: CurrentUser | None = None,
 ) -> dict[str, Any]:
     """Compute the mean-variance efficient frontier.
 
@@ -317,7 +316,6 @@ async def risk_report(
     symbol: str = Query(..., description="Ticker symbol"),
     confidence: float = Query(default=0.99, ge=0.90, le=0.999),
     method: str = Query(default="historical", pattern="^(historical|parametric|monte_carlo)$"),
-    user: CurrentUser | None = None,
 ) -> RiskReportResponse:
     """Compute 1-day VaR and ES using three methods.
 

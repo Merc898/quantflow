@@ -7,16 +7,14 @@ a ModelOutput Pydantic object that the signal fusion engine consumes.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any
+from datetime import datetime
+from typing import Any
 
 import numpy as np
 import pandas as pd
 from pydantic import BaseModel, Field, field_validator
 
 from quantflow.config.logging import get_logger
-
-if TYPE_CHECKING:
-    from datetime import datetime
 
 logger = get_logger(__name__)
 
